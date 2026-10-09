@@ -110,12 +110,17 @@ adminUsersRouter.get('/:uid', adminAuth, async (req: AdminAuthenticatedRequest, 
     const recentReferrals = referralsSnap.docs.map((doc: any) => doc.data());
 
     // Get recent activity (e.g. from battle logs or xp transactions)
-    const xpSnap = await db.collection('xpTransactions').where('userId', '==', uid).orderBy('createdAt', 'desc').limit(10).get();
-    const recentActivity = xpSnap.docs.map((doc: any) => doc.data());
+    const xpSnap = await db.collection('xpTransactions').where('userId', '==', uid).get();
+    const recentActivity = xpSnap.docs
+      .map((doc: any) => doc.data())
+      .sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+      .slice(0, 10);
     
     // Get moderation history
-    const auditSnap = await db.collection('auditLogs').where('targetUserId', '==', uid).orderBy('timestamp', 'desc').get();
-    const moderationHistory = auditSnap.docs.map((doc: any) => doc.data());
+    const auditSnap = await db.collection('auditLogs').where('targetUserId', '==', uid).get();
+    const moderationHistory = auditSnap.docs
+      .map((doc: any) => doc.data())
+      .sort((a: any, b: any) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
 
     res.json({
       user: userData,
