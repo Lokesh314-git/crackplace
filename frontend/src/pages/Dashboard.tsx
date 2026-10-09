@@ -11,8 +11,11 @@ import {
   FaArrowRight,
   FaComments,
   FaBookOpen,
-  FaBolt
+  FaBolt,
+  FaGift,
+  FaXmark
 } from 'react-icons/fa6';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import MissionsDeck from '../components/MissionsDeck';
 import { Card, StatCard, Badge } from '../components/ui';
@@ -21,6 +24,7 @@ import { calculatePlacementReadiness } from '../utils/readiness';
 
 export const Dashboard: React.FC = () => {
   const { userProfile } = useAuthStore();
+  const [showPromoBanner, setShowPromoBanner] = useState(() => sessionStorage.getItem('hidePromoBanner') !== 'true');
 
   if (!userProfile) return null;
   const readiness = calculatePlacementReadiness(userProfile);
@@ -100,6 +104,49 @@ export const Dashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Invite & Promote Promotional Banner */}
+      {showPromoBanner && (
+        <div className="relative group">
+          <Link 
+            to="/invite-promote" 
+            className="block overflow-hidden bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/40 dark:to-purple-950/40 border border-indigo-100 dark:border-indigo-900/50 hover:border-indigo-200 dark:hover:border-indigo-800 rounded-xl p-4 md:p-5 transition-all duration-200 hover:shadow-sm"
+          >
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="flex-shrink-0 w-12 h-12 rounded-full bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shadow-sm border border-indigo-50 dark:border-indigo-900/30">
+                  <FaGift className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base md:text-lg font-bold text-slate-900 dark:text-white group-hover:text-indigo-700 dark:group-hover:text-indigo-400 transition-colors">
+                    Grow your CrackPlace circle
+                  </h3>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-0.5">
+                    Invite friends, earn rewards, and climb together.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 mt-2 md:mt-0 ml-16 md:ml-0">
+                <span className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-colors shadow-xs">
+                  Explore Invite & Promote
+                  <FaArrowRight className="w-3.5 h-3.5" />
+                </span>
+              </div>
+            </div>
+          </Link>
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              sessionStorage.setItem('hidePromoBanner', 'true');
+              setShowPromoBanner(false);
+            }}
+            className="absolute top-2 right-2 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-white/60 dark:hover:bg-slate-800/60 rounded-full transition-colors z-10"
+            aria-label="Dismiss banner"
+          >
+            <FaXmark className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Metrics Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
