@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { 
-  FaCode, 
-  FaComments, 
-  FaCalculator, 
-  FaDatabase, 
-  FaServer, 
-  FaNetworkWired, 
-  FaBrain, 
-  FaFont, 
+import {
+  FaCode,
+  FaComments,
+  FaCalculator,
+  FaDatabase,
+  FaServer,
+  FaNetworkWired,
+  FaBrain,
+  FaFont,
   FaCirclePlay
 } from 'react-icons/fa6';
 import { Badge } from '../components/ui';
@@ -46,12 +46,6 @@ export const PracticeHub: React.FC = () => {
     <div className="space-y-6">
       {/* Header */}
       <div className="space-y-1">
-        <div className="flex items-center gap-2">
-          <Badge variant="primary" size="sm">
-            Supabase Question Bank
-          </Badge>
-          <span className="text-xs text-slate-400">Comprehensive Placement Modules</span>
-        </div>
         <h1 className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">
           Topic-wise Practice Hub
         </h1>
@@ -64,11 +58,11 @@ export const PracticeHub: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {SUBJECT_LIST.map((item: SubjectConfig) => {
           const count = counts[item.slug];
-          const displayCount = count !== undefined && count > 0 
-            ? `${count} Active Questions` 
+          const displayCount = count !== undefined && count > 0
+            ? `${count} Active Questions`
             : 'Supabase Question Bank';
-          const targetUrl = item.slug === 'hr_behavioral' 
-            ? '/hr-interview' 
+          const targetUrl = item.slug === 'hr_behavioral'
+            ? '/hr-interview'
             : `/quiz?category=${encodeURIComponent(item.slug)}`;
 
           return (
