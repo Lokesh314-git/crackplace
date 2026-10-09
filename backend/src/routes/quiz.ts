@@ -194,7 +194,7 @@ router.post(['/:quizId/results', '/:quizId/submit'], optionalAuth, async (req: A
         userData = {
           uid: req.user!.uid,
           email: req.user!.email || 'student@crackplace.ai',
-          displayName: req.user!.name || 'Anonymous Cadet',
+          displayName: req.user!.name || 'Anonymous',
           photoURL: `https://api.dicebear.com/7.x/adventurer/svg?seed=${req.user!.uid}`,
           role: 'student',
           college: '',

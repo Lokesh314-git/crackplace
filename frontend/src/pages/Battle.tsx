@@ -185,7 +185,7 @@ export const Battle: React.FC = () => {
         battleType: selectedCategory,
         rating: userProfile?.battleRating || 1000,
         profile: {
-          displayName: userProfile?.displayName || 'Anonymous Cadet',
+          displayName: userProfile?.displayName || 'Anonymous',
           level: userProfile?.level || 1,
           avatar: getUserAvatarUrl(userProfile),
           equippedRing: userProfile?.equippedRing || '',

@@ -140,7 +140,7 @@ app.post('/api/auth/verify', strictAuthLimiter, verifyToken, async (req: Authent
         userData = {
           uid: req.user!.uid,
           email: req.user!.email || 'student@crackplace.ai',
-          displayName: req.user!.name || 'Anonymous Cadet',
+          displayName: req.user!.name || 'Anonymous',
           photoURL: defaultResolved.url,
           equippedAvatar: defaultResolved.id,
           unlockedAvatars: [defaultResolved.id],
@@ -490,7 +490,7 @@ app.get('/api/profile/:uid/public', verifyToken, async (req: AuthenticatedReques
 
     const publicProfile = {
       uid,
-      displayName: data.displayName || 'Anonymous Cadet',
+      displayName: data.displayName || 'Anonymous',
       photoURL: resolvedAvatar.url,
       equippedAvatar: resolvedAvatar.id,
       level: computedLevel,

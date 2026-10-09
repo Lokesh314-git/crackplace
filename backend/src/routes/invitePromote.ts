@@ -11,7 +11,7 @@ invitePromoteRouter.post('/referral/track', verifyToken, async (req: Authenticat
   try {
     const { referrerId } = req.body;
     const newUserId = req.user?.uid;
-    const newUserName = req.user?.name || req.user?.email || 'Anonymous Cadet';
+    const newUserName = req.user?.name || req.user?.email || 'Anonymous';
 
     if (!referrerId || !newUserId) {
       return res.status(400).json({ error: 'Missing referrer or user ID' });
