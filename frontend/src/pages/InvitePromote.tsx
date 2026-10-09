@@ -311,7 +311,7 @@ export const InvitePromote: React.FC = () => {
                                     {typeof promo.rewardedItems === 'object' ? (
                                       <>
                                         {promo.rewardedItems.coins > 0 && <div>• +{promo.rewardedItems.coins} Coins</div>}
-                                        {promo.rewardedItems.cashAmount > 0 && <div>• {promo.rewardedItems.cashAmount} {promo.rewardedItems.currency || 'USD'}</div>}
+                                        {promo.rewardedItems.cashAmount > 0 && <div>• {promo.rewardedItems.cashAmount} {promo.rewardedItems.currency || 'INR'}</div>}
                                         {promo.rewardedItems.cosmeticIds?.length > 0 && (
                                           <div>• {promo.rewardedItems.cosmeticIds.length} Cosmetic(s) Unlocked</div>
                                         )}
@@ -339,8 +339,15 @@ export const InvitePromote: React.FC = () => {
                         <div className="space-y-2">
                           {cashRewards.map((cash) => (
                             <div key={cash.id} className="bg-white border border-slate-200 rounded-lg p-3 flex justify-between items-center">
-                              <div className="font-bold text-sm text-slate-800">
-                                {cash.amount} {cash.currency}
+                              <div>
+                                <div className="font-bold text-sm text-slate-800">
+                                  {cash.amount} {cash.currency || 'INR'}
+                                </div>
+                                {cash.fulfillmentReference && (
+                                  <div className="text-[10px] text-slate-500 mt-1">
+                                    Ref: {cash.fulfillmentReference}
+                                  </div>
+                                )}
                               </div>
                               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                                 cash.status === 'Pending Payment' ? 'bg-amber-100 text-amber-700 border border-amber-200' :

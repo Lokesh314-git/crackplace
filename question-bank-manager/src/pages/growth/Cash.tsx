@@ -85,7 +85,7 @@ export const Cash: React.FC = () => {
                 <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
                   <td className="px-4 py-3 text-sm font-medium">{reward.userId}</td>
                   <td className="px-4 py-3 text-sm font-bold text-emerald-600">
-                    {reward.amount} {reward.currency || 'USD'}
+                    {reward.amount} {reward.currency || 'INR'}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
@@ -95,7 +95,7 @@ export const Cash: React.FC = () => {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-sm text-slate-500">{new Date(reward.createdAt).toLocaleDateString()}</td>
-                  <td className="px-4 py-3 text-sm text-slate-500">{reward.paymentReference || '-'}</td>
+                  <td className="px-4 py-3 text-sm text-slate-500">{reward.fulfillmentReference || '-'}</td>
                   <td className="px-4 py-3 text-right">
                     {reward.status === 'pending' && (
                       <button 

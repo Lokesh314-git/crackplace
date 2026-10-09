@@ -60,7 +60,7 @@ export const Rewards: React.FC = () => {
         rewardDetails: { 
           coins,
           cashAmount,
-          currency: 'USD',
+          currency: 'INR',
           cosmeticIds: selectedCosmetics
         }
       });
@@ -144,7 +144,7 @@ export const Rewards: React.FC = () => {
             </div>
             
             <div>
-              <label className="block text-sm font-medium mb-1">Cash Amount (USD)</label>
+              <label className="block text-sm font-medium mb-1">Cash Amount (INR)</label>
               <input 
                 type="number" 
                 value={cashAmount} 
