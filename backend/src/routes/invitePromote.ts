@@ -146,65 +146,83 @@ invitePromoteRouter.post('/admin/promotions/:id/review', adminAuth, async (req: 
     if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
 
     const { id } = req.params;
-    const { status, message, rewards } = req.body; // rewards: { coins?: number, cosmeticIds?: string[], cashAmount?: number, currency?: string }
-
-    const promoRef = db.collection('promotions').doc(id);
-    const promoDoc = await promoRef.get();
-    if (!promoDoc.exists) return res.status(404).json({ error: 'Promotion not found' });
+    const { status, message, rewards, rewardDetails } = req.body;
     
-    const promoData = promoDoc.data()!;
-    if (promoData.status === 'approved') return res.status(400).json({ error: 'Already reviewed' });
+    // Support both payload structures
+    const rewardsData = rewards || rewardDetails;
 
-    // Handle the rewards if approved
-    if (status === 'approved' && rewards) {
-      const userRef = db.collection('users').doc(promoData.userId);
-      const updates: any = {};
+    await db.runTransaction(async (transaction: any) => {
+      const promoRef = db.collection('promotions').doc(id);
+      const promoDoc = await transaction.get(promoRef);
+      if (!promoDoc.exists) throw new Error('Promotion not found');
       
-      if (rewards.coins) {
-        updates.coins = FieldValue.increment(rewards.coins);
-        // We could also log a transaction here
-      }
+      const promoData = promoDoc.data()!;
       
-      if (rewards.cosmeticIds && rewards.cosmeticIds.length > 0) {
-        updates.unlockedAvatars = FieldValue.arrayUnion(...rewards.cosmeticIds);
-        updates.unlockedThemes = FieldValue.arrayUnion(...rewards.cosmeticIds);
-        updates.unlockedRings = FieldValue.arrayUnion(...rewards.cosmeticIds);
-        updates.unlockedFrames = FieldValue.arrayUnion(...rewards.cosmeticIds);
+      // If already fully reviewed and rewarded, block.
+      if (promoData.status === 'approved' && promoData.rewardedItems && status === 'approved') {
+        throw new Error('Already reviewed and rewarded');
       }
       
-      if (Object.keys(updates).length > 0) {
-        await userRef.update(updates);
+      // If attempting to reject an already approved one, block (prevent abuse)
+      if (promoData.status === 'approved' && status === 'rejected') {
+        throw new Error('Cannot reject an already approved promotion');
       }
 
-      // Handle Cash Reward
-      if (rewards.cashAmount && rewards.cashAmount > 0) {
-        const cashRef = db.collection('cashRewards').doc();
-        await cashRef.set({
-          id: cashRef.id,
-          userId: promoData.userId,
-          promotionId: promoData.id,
-          amount: rewards.cashAmount,
-          currency: rewards.currency || 'USD',
-          status: 'Pending Payment',
-          adminId: req.user.uid,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        });
-      }
-    }
+      // Handle the rewards if approved
+      if (status === 'approved' && rewardsData) {
+        const userRef = db.collection('users').doc(promoData.userId);
+        
+        const updates: any = {};
+        
+        if (rewardsData.coins) {
+          updates.coins = FieldValue.increment(rewardsData.coins);
+        }
+        
+        if (rewardsData.cosmeticIds && rewardsData.cosmeticIds.length > 0) {
+          updates.unlockedAvatars = FieldValue.arrayUnion(...rewardsData.cosmeticIds);
+          updates.unlockedThemes = FieldValue.arrayUnion(...rewardsData.cosmeticIds);
+          updates.unlockedRings = FieldValue.arrayUnion(...rewardsData.cosmeticIds);
+          updates.unlockedFrames = FieldValue.arrayUnion(...rewardsData.cosmeticIds);
+        }
+        
+        if (Object.keys(updates).length > 0) {
+          transaction.update(userRef, updates);
+        }
 
-    // Update promotion status
-    await promoRef.update({
-      status,
-      adminMessage: message || '',
-      rewardedItems: status === 'approved',
-      reviewedAt: new Date().toISOString(),
-      reviewedBy: req.user.uid
+        // Handle Cash Reward
+        if (rewardsData.cashAmount && rewardsData.cashAmount > 0) {
+          const cashRef = db.collection('cashRewards').doc();
+          transaction.set(cashRef, {
+            id: cashRef.id,
+            userId: promoData.userId,
+            promotionId: promoData.id,
+            amount: rewardsData.cashAmount,
+            currency: rewardsData.currency || 'USD',
+            status: 'pending', // Make sure this matches cash workflow 'pending'
+            adminId: req.user!.uid,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+        }
+      }
+
+      // Update promotion status
+      transaction.update(promoRef, {
+        status,
+        adminMessage: message || promoData.adminMessage || '',
+        rewardedItems: status === 'approved' && (promoData.rewardedItems || !!rewardsData),
+        reviewedAt: new Date().toISOString(),
+        reviewedBy: req.user!.uid
+      });
     });
 
     res.json({ success: true, message: 'Promotion reviewed successfully' });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error reviewing promotion:', error);
+    if (error.message === 'Promotion not found') return res.status(404).json({ error: error.message });
+    if (error.message === 'Already reviewed and rewarded' || error.message === 'Cannot reject an already approved promotion') {
+      return res.status(400).json({ error: error.message });
+    }
     res.status(500).json({ error: 'Failed to review promotion' });
   }
 });

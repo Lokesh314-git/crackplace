@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { getPromotions, reviewPromotion } from '../../services/growthApiService';
-import { Loader2, Video, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
+import { Loader2, Video, AlertCircle, CheckCircle, XCircle, Gift } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 export const Influencers: React.FC = () => {
   const [promotions, setPromotions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  
+  const navigate = useNavigate();
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   useEffect(() => {
@@ -88,6 +89,17 @@ export const Influencers: React.FC = () => {
                     <span className="text-slate-600 dark:text-slate-400">{promo.adminMessage}</span>
                   </div>
                 )}
+                
+                {promo.status === 'approved' && (
+                  <div className="mt-3 bg-indigo-50 dark:bg-indigo-900/20 p-3 rounded-lg text-sm border border-indigo-100 dark:border-indigo-800/30">
+                    <strong className="text-indigo-800 dark:text-indigo-300 block mb-1">Reward Status:</strong>
+                    {promo.rewardedItems ? (
+                       <span className="text-indigo-600 dark:text-indigo-400 font-medium">Reward Issued</span>
+                    ) : (
+                       <span className="text-amber-600 dark:text-amber-400 font-medium">Pending Reward</span>
+                    )}
+                  </div>
+                )}
               </div>
               
               <div className="flex flex-row md:flex-col gap-2 justify-center">
@@ -110,6 +122,15 @@ export const Influencers: React.FC = () => {
                       Reject
                     </button>
                   </>
+                )}
+                {promo.status === 'approved' && !promo.rewardedItems && (
+                  <button 
+                    onClick={() => navigate('/growth/rewards')}
+                    className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors"
+                  >
+                    <Gift className="w-4 h-4" />
+                    Issue Reward
+                  </button>
                 )}
               </div>
             </div>

@@ -71,7 +71,9 @@ export async function reviewPromotion(promotionId: string, payload: {
   message: string,
   rewardDetails?: {
     coins?: number;
-    cosmetics?: string[];
+    cosmeticIds?: string[];
+    cashAmount?: number;
+    currency?: string;
   }
 }) {
   const data = await fetchWithAuth(`/api/invite-promote/admin/promotions/${promotionId}/review`, {

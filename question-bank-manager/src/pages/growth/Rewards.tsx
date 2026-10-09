@@ -1,12 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import { getPromotions, reviewPromotion } from '../../services/growthApiService';
 import { Loader2, Gift, AlertCircle } from 'lucide-react';
+import { Modal } from '../../components/ui/Modal';
+// Import cosmetics catalog from frontend to ensure valid IDs
+import { COSMETICS_CATALOG } from '../../../../frontend/src/config/cosmetics';
 
 export const Rewards: React.FC = () => {
   const [promotions, setPromotions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  // Modal State
+  const [selectedPromo, setSelectedPromo] = useState<any>(null);
+  const [coins, setCoins] = useState<number>(0);
+  const [cashAmount, setCashAmount] = useState<number>(0);
+  const [selectedCosmetics, setSelectedCosmetics] = useState<string[]>([]);
+  const [adminMessage, setAdminMessage] = useState('Thank you for promoting CrackPlace! We appreciate your effort in introducing our platform to your audience. Enjoy your reward!');
 
   useEffect(() => {
     load();
@@ -16,7 +26,7 @@ export const Rewards: React.FC = () => {
     setLoading(true);
     try {
       const data = await getPromotions();
-      // Only show approved promotions that haven't been rewarded yet
+      // Show approved promotions that haven't been rewarded yet, or you could show all to allow history tracking
       setPromotions(data.filter((p: any) => p.status === 'approved' && !p.rewardedItems));
     } catch (err: any) {
       setError(err.message || 'Failed to load');
@@ -25,28 +35,37 @@ export const Rewards: React.FC = () => {
     }
   }
 
-  const handleGrantReward = async (id: string) => {
-    const coinsInput = prompt('Enter coins amount to grant:', '5000');
-    if (coinsInput === null) return;
+  const openRewardModal = (promo: any) => {
+    setSelectedPromo(promo);
+    setCoins(5000);
+    setCashAmount(0);
+    setSelectedCosmetics([]);
+    setAdminMessage('Thank you for promoting CrackPlace! Enjoy your reward!');
+  };
+
+  const toggleCosmetic = (id: string) => {
+    setSelectedCosmetics(prev => 
+      prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
+    );
+  };
+
+  const handleGrantReward = async () => {
+    if (!selectedPromo) return;
+    setActionLoading(selectedPromo.id);
     
-    const coins = parseInt(coinsInput, 10);
-    if (isNaN(coins) || coins < 0) {
-      alert('Invalid coins amount');
-      return;
-    }
-
-    const message = prompt('Enter a personalized reward message:', 'Thank you for promoting CrackPlace! We appreciate your effort in introducing our platform to your audience. Enjoy your reward!');
-    if (message === null) return;
-
-    setActionLoading(id);
     try {
-      // Re-review with same 'approved' status but now granting reward details
-      await reviewPromotion(id, {
+      await reviewPromotion(selectedPromo.id, {
         status: 'approved',
-        message,
-        rewardDetails: { coins }
+        message: adminMessage,
+        rewardDetails: { 
+          coins,
+          cashAmount,
+          currency: 'USD',
+          cosmeticIds: selectedCosmetics
+        }
       });
       alert('Reward granted successfully!');
+      setSelectedPromo(null);
       await load();
     } catch (err: any) {
       alert(err.message);
@@ -63,7 +82,7 @@ export const Rewards: React.FC = () => {
         </div>
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Gift & Reward Management</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Grant coins and cosmetics to approved influencers.</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Issue custom reward packages (Coins, Cosmetics, Cash) to approved influencers.</p>
         </div>
       </div>
 
@@ -89,12 +108,12 @@ export const Rewards: React.FC = () => {
               </div>
               
               <button 
-                onClick={() => handleGrantReward(promo.id)}
+                onClick={() => openRewardModal(promo)}
                 disabled={actionLoading === promo.id}
                 className="flex items-center justify-center gap-2 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors"
               >
                 {actionLoading === promo.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Gift className="w-4 h-4" />}
-                Grant Reward Package
+                Issue Reward
               </button>
             </div>
           ))}
@@ -105,6 +124,70 @@ export const Rewards: React.FC = () => {
             </div>
           )}
         </div>
+      )}
+
+      {selectedPromo && (
+        <Modal 
+          isOpen={true} 
+          onClose={() => setSelectedPromo(null)}
+          title="Configure Reward Package"
+        >
+          <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+            <div>
+              <label className="block text-sm font-medium mb-1">Coins to Grant</label>
+              <input 
+                type="number" 
+                value={coins} 
+                onChange={e => setCoins(parseInt(e.target.value) || 0)}
+                className="w-full px-3 py-2 border rounded-lg"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium mb-1">Cash Amount (USD)</label>
+              <input 
+                type="number" 
+                value={cashAmount} 
+                onChange={e => setCashAmount(parseInt(e.target.value) || 0)}
+                className="w-full px-3 py-2 border rounded-lg"
+              />
+              <p className="text-xs text-slate-500 mt-1">If set &gt; 0, this will create a pending payment in the Cash tab.</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">Select Cosmetics</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-60 overflow-y-auto border p-2 rounded-lg bg-slate-50">
+                {COSMETICS_CATALOG.filter(c => !c.isFree).map(c => (
+                  <label key={c.id} className="flex items-center gap-2 text-sm p-1 hover:bg-slate-100 rounded cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={selectedCosmetics.includes(c.id)}
+                      onChange={() => toggleCosmetic(c.id)}
+                    />
+                    <span>{c.name} <span className="text-xs text-slate-400">({c.rarity})</span></span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Personalized Message</label>
+              <textarea 
+                value={adminMessage} 
+                onChange={e => setAdminMessage(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg h-24"
+              />
+            </div>
+
+            <button 
+              onClick={handleGrantReward}
+              disabled={actionLoading === selectedPromo.id}
+              className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors"
+            >
+              {actionLoading === selectedPromo.id ? 'Granting...' : 'Confirm & Grant Reward'}
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   );

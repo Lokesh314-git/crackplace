@@ -13,7 +13,8 @@ import {
   FaBookOpen,
   FaStore,
   FaGear,
-  FaCrown
+  FaCrown,
+  FaUsers
 } from 'react-icons/fa6';
 import { useAuthStore } from '../../store/authStore';
 import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/firestore';
@@ -144,6 +145,18 @@ export const DashboardLayout: React.FC = () => {
                 >
                   <FaStore className="w-4 h-4 text-slate-400" />
                   <span>Armory Rewards Store</span>
+                </NavLink>
+
+                <NavLink
+                  to="/invite-promote"
+                  onClick={() => setIsDrawerOpen(false)}
+                  className={({ isActive }) => `
+                    flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-colors
+                    ${isActive ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}
+                  `}
+                >
+                  <FaUsers className="w-4 h-4 text-slate-400" />
+                  <span>Invite & Promote</span>
                 </NavLink>
 
                 <NavLink
