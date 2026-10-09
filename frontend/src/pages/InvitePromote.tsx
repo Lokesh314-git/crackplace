@@ -302,9 +302,28 @@ export const InvitePromote: React.FC = () => {
                                 </div>
                               )}
                               {promo.rewardedItems && (
-                                <div className="mt-2 flex items-center gap-2 text-xs font-bold text-emerald-600">
-                                  <FaGift /> Rewards Granted
-                                </div>
+                                <details className="mt-2 group">
+                                  <summary className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 cursor-pointer list-none select-none hover:text-emerald-700">
+                                    <FaGift /> Rewards Granted
+                                    <span className="text-[10px] text-emerald-500 group-open:rotate-180 transition-transform ml-1">▼</span>
+                                  </summary>
+                                  <div className="mt-2 pl-3 ml-1.5 text-xs text-slate-600 space-y-1 border-l-2 border-emerald-100">
+                                    {typeof promo.rewardedItems === 'object' ? (
+                                      <>
+                                        {promo.rewardedItems.coins > 0 && <div>• +{promo.rewardedItems.coins} Coins</div>}
+                                        {promo.rewardedItems.cashAmount > 0 && <div>• {promo.rewardedItems.cashAmount} {promo.rewardedItems.currency || 'USD'}</div>}
+                                        {promo.rewardedItems.cosmeticIds?.length > 0 && (
+                                          <div>• {promo.rewardedItems.cosmeticIds.length} Cosmetic(s) Unlocked</div>
+                                        )}
+                                        {(!promo.rewardedItems.coins && !promo.rewardedItems.cashAmount && (!promo.rewardedItems.cosmeticIds || promo.rewardedItems.cosmeticIds.length === 0)) && (
+                                          <div>• Custom rewards applied</div>
+                                        )}
+                                      </>
+                                    ) : (
+                                      <div>• Rewards successfully added to your account.</div>
+                                    )}
+                                  </div>
+                                </details>
                               )}
                             </div>
                           ))}

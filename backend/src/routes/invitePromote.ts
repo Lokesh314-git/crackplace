@@ -210,7 +210,7 @@ invitePromoteRouter.post('/admin/promotions/:id/review', adminAuth, async (req: 
       transaction.update(promoRef, {
         status,
         adminMessage: message || promoData.adminMessage || '',
-        rewardedItems: status === 'approved' && (promoData.rewardedItems || !!rewardsData),
+        rewardedItems: status === 'approved' && rewardsData ? rewardsData : promoData.rewardedItems,
         reviewedAt: new Date().toISOString(),
         reviewedBy: req.user!.uid
       });
