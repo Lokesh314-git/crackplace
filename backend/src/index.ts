@@ -65,12 +65,15 @@ app.use((_req, res, next) => {
 app.use(express.json({ limit: '2mb' }));
 app.use(standardApiLimiter);
 
+import { adminUsersRouter } from './routes/adminUsers';
+
 // Mount Modular Routers
 app.use('/api/quiz', quizRouter);
 app.use('/api/coding', codingRouter);
 app.use('/api/interview', interviewRouter);
 app.use('/api/study', studyRouter);
 app.use('/api/invite-promote', invitePromoteRouter);
+app.use('/api/admin/users', adminUsersRouter);
 
 // ----------------------------------------------------
 // Health & Readiness Probes (Phase 21 & 47)

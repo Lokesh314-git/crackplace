@@ -32,7 +32,7 @@ export async function verifyToken(req: AuthenticatedRequest, res: Response, next
   const token = authHeader.split('Bearer ')[1];
 
   try {
-    const decodedToken = await auth.verifyIdToken(token);
+    const decodedToken = await auth.verifyIdToken(token, true);
     req.user = {
       uid: decodedToken.uid,
       email: decodedToken.email,
@@ -118,7 +118,7 @@ export async function socketAuthMiddleware(socket: Socket, next: (err?: Error) =
   }
 
   try {
-    const decoded = await auth.verifyIdToken(String(token));
+    const decoded = await auth.verifyIdToken(String(token), true);
     socket.data.userId = decoded.uid;
     socket.data.email = decoded.email;
     socket.data.authenticated = true;

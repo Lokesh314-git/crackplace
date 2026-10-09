@@ -9,6 +9,7 @@ import { ImportCSV } from './pages/ImportCSV';
 import { Subjects } from './pages/Subjects';
 import { Settings } from './pages/Settings';
 import { Login } from './pages/Login';
+import { Users } from './pages/Users';
 
 // Growth & Rewards Pages
 import { GrowthDashboard } from './pages/growth/Dashboard';
@@ -60,6 +61,7 @@ export const App: React.FC = () => {
           <Route path="add-question" element={<AddQuestion />} />
           <Route path="import-csv" element={<ImportCSV />} />
           <Route path="subjects" element={<Subjects />} />
+          <Route path="users" element={<Users />} />
           <Route path="settings" element={<Settings />} />
           
           {/* Growth & Rewards Routes */}

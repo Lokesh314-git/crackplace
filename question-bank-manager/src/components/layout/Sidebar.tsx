@@ -15,7 +15,8 @@ import {
   Gift,
   Banknote,
   Settings2,
-  ClipboardList
+  ClipboardList,
+  UserCog
 } from 'lucide-react';
 import { isSupabaseConfigured } from '../../lib/supabase';
 
@@ -27,6 +28,7 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const navItems = [
     { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+    { to: '/users', label: 'User Management', icon: UserCog },
     { to: '/questions', label: 'All Questions', icon: Database },
     { to: '/add-question', label: 'Add Question', icon: PlusCircle },
     { to: '/import-csv', label: 'Import CSV', icon: FileUp, badge: 'Batch' },
