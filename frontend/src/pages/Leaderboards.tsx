@@ -5,6 +5,7 @@ import { getUserAvatarUrl, getAvatarImageUrl, SYSTEM_DEFAULT_AVATAR_VISUAL } fro
 import { checkIsLegendaryPlayer } from '../config/cosmetics';
 import { ProfilePreviewModal } from '../components/profile/ProfilePreviewModal';
 import type { ProfilePreviewData } from '../components/profile/ProfilePreviewModal';
+import { calculateLevelFromXP } from '../utils/levelCalculator';
 
 interface LeaderboardUser {
   uid: string;
@@ -257,7 +258,7 @@ export const Leaderboards: React.FC = () => {
 
                     <div className="w-full">
                       <h4 className="font-semibold text-sm text-text-primary truncate">{user.displayName || 'Cadet'}</h4>
-                      <p className="text-[11px] text-text-muted mt-0.5">Level {user.level} Candidate</p>
+                      <p className="text-[11px] text-text-muted mt-0.5">Level {calculateLevelFromXP(user.xp || user.totalXp || 0)} Candidate</p>
                     </div>
 
                     <div className="w-full pt-3 mt-3 border-t border-border-dark flex justify-between items-center text-xs">
@@ -376,7 +377,7 @@ export const Leaderboards: React.FC = () => {
                         {user.displayName || 'Cadet'} {isCurrentUser && <span className={`${isLegendary ? 'text-yellow-400' : 'text-brand-400'} font-normal`}>(You)</span>}
                       </h4>
                       <div className="flex items-center gap-2">
-                        <p className="text-[10px] text-text-muted">Level {user.level}</p>
+                        <p className="text-[10px] text-text-muted">Level {calculateLevelFromXP(user.xp || user.totalXp || 0)}</p>
                         {isLegendary && (
                           <span className="text-[8px] font-bold text-yellow-400 bg-yellow-500/20 px-1 rounded flex items-center gap-0.5 border border-yellow-500/30">
                             <FaCrown className="w-2 h-2" /> LEGEND

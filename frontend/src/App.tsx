@@ -17,6 +17,8 @@ import Profile from './pages/Profile';
 import Store from './pages/Store';
 import Invite from './pages/Invite';
 import Personalization from './pages/Personalization';
+import InvitePromote from './pages/InvitePromote';
+import AdminPanel from './pages/AdminPanel';
 import StudyNotes from './pages/StudyNotes';
 
 // Public SEO and Marketing components
@@ -87,7 +89,8 @@ export const App: React.FC = () => {
             <Route path="/personalization" element={<Personalization />} />
             <Route path="/store" element={<Store />} />
             <Route path="/study-notes" element={<StudyNotes />} />
-            <Route path="/admin" element={<div className="p-6 glass-panel rounded-2xl text-white font-bold">Admin Panel: Under Construction</div>} />
+            <Route path="/invite-promote" element={<InvitePromote />} />
+            <Route path="/admin" element={<AdminPanel />} />
           </Route>
         </Route>
 

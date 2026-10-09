@@ -40,12 +40,35 @@ export const Register: React.FC = () => {
     setLoadingLocal(true);
     setErrorMsg(null);
     try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const referrerId = urlParams.get('ref');
+
       await registerUser(data.email, data.password, data.displayName, {
         college: data.college,
         department: data.department,
         year: Number(data.year),
-        dreamCompany: data.dreamCompany
+        dreamCompany: data.dreamCompany,
+        referredBy: referrerId || undefined
       });
+
+      if (referrerId) {
+        const { token } = useAuthStore.getState();
+        if (token) {
+          try {
+            await fetch('/api/invite-promote/referral/track', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`
+              },
+              body: JSON.stringify({ referrerId })
+            });
+          } catch (e) {
+            console.error('Failed to track referral:', e);
+          }
+        }
+      }
+
       const pendingInvite = sessionStorage.getItem('pending_invite');
       if (pendingInvite) {
         sessionStorage.removeItem('pending_invite');

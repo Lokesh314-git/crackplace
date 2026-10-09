@@ -45,6 +45,7 @@ export interface UserProfile {
   lastSpinDate?: string;
   mysteryBoxes?: number;
   createdAt: any;
+  referredBy?: string;
 
   // Cosmetics System
   equippedAvatar?: string | null;

@@ -4,6 +4,7 @@ import { QuestionService } from '../services/QuestionService';
 import { db } from '../config/firebase';
 import { z } from 'zod';
 import { calculateLevelFromXP, LevelCalculator, syncMissionsState, processMissionProgress, checkAndUnlockAchievements, updateDailyStreak } from '../utils/gamification';
+import { checkAndFulfillReferral } from '../services/referralService';
 import { calculatePlacementReadiness } from '../utils/readiness';
 
 const router = Router();
@@ -365,6 +366,9 @@ router.post(['/:quizId/results', '/:quizId/submit'], optionalAuth, async (req: A
         read: false
       });
     }
+
+    // Verify referral eligibility asynchronously
+    checkAndFulfillReferral(req.user.uid);
 
     res.json({
       message: 'Quiz results recorded successfully',

@@ -15,7 +15,8 @@ import {
   FaStore,
   FaTrophy,
   FaUser,
-  FaGear
+  FaGear,
+  FaBullhorn
 } from 'react-icons/fa6';
 
 export const Sidebar: React.FC = () => {
@@ -48,6 +49,7 @@ export const Sidebar: React.FC = () => {
         { to: '/battle', label: 'Battle Arena', icon: <FaGamepad className="w-4 h-4" /> },
         { to: '/leaderboard', label: 'Leaderboard', icon: <FaTrophy className="w-4 h-4" /> },
         { to: '/store', label: 'Armory Store', icon: <FaStore className="w-4 h-4" /> },
+        { to: '/invite-promote', label: 'Invite & Promote', icon: <FaBullhorn className="w-4 h-4" /> },
       ]
     },
     {

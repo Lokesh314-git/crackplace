@@ -31,6 +31,7 @@ import quizRouter from './routes/quiz';
 import codingRouter from './routes/coding';
 import interviewRouter from './routes/interview';
 import studyRouter from './routes/study';
+import invitePromoteRouter from './routes/invitePromote';
 import logger from './utils/logger';
 
 dotenv.config();
@@ -69,6 +70,7 @@ app.use('/api/quiz', quizRouter);
 app.use('/api/coding', codingRouter);
 app.use('/api/interview', interviewRouter);
 app.use('/api/study', studyRouter);
+app.use('/api/invite-promote', invitePromoteRouter);
 
 // ----------------------------------------------------
 // Health & Readiness Probes (Phase 21 & 47)

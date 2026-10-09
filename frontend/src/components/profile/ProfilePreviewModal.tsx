@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { FaXmark, FaBuilding, FaGraduationCap, FaFire, FaTrophy, FaStar, FaCrown } from 'react-icons/fa6';
 import { useAuthStore } from '../../store/authStore';
 import { getUserAvatarUrl, getAvatarImageUrl, SYSTEM_DEFAULT_AVATAR_VISUAL } from '../../utils/avatarResolver';
+import { calculateLevelFromXP } from '../../utils/levelCalculator';
 
 export interface ProfilePreviewData {
   uid: string;
@@ -166,7 +167,7 @@ export const ProfilePreviewModal: React.FC<ProfilePreviewModalProps> = ({
                     <div className="grid grid-cols-2 gap-3">
                       <div className="bg-surface-elevated/40 border border-border-dark p-3 rounded-2xl flex flex-col items-center justify-center text-center">
                         <span className="text-[10px] uppercase tracking-wider text-text-muted font-semibold mb-1">Level</span>
-                        <div className="text-lg font-bold text-text-primary font-mono">{profile.level || 1}</div>
+                        <div className="text-lg font-bold text-text-primary font-mono">{calculateLevelFromXP(profile.xp || 0)}</div>
                       </div>
                       <div className="bg-surface-elevated/40 border border-border-dark p-3 rounded-2xl flex flex-col items-center justify-center text-center">
                         <span className="text-[10px] uppercase tracking-wider text-text-muted font-semibold mb-1 flex items-center gap-1">
