@@ -1,0 +1,16 @@
+services:
+  - type: static
+    name: crackplace-question-bank-manager
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+      - key: VITE_ADMIN_EMAIL
+        sync: false

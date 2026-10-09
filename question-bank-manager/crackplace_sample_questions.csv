@@ -1,0 +1,4 @@
+id,subject,topic,subtopic,difficulty,question_type,question,option_a,option_b,option_c,option_d,correct_answer,explanation,source
+QA0001,quantitative_aptitude,Percentages,Basic Percentage,Easy,MCQ,"What is 20% of 100?","10","20","30","40","B","20% of 100 is 20.","Campus Assessment 2025"
+DSA0001,dsa,Arrays,Time Complexity,Medium,MCQ,"What is the average time complexity of searching in a Hash Table with good hash distribution?","O(1)","O(log N)","O(N)","O(N^2)","A","Direct key hashing enables constant average time lookup O(1).","Technical Round"
+HR0001,hr_behavioral,Leadership,Teamwork,Medium,INTERVIEW,"Tell me about a time you handled a tight project deadline with unexpected roadblocks.","","","","","","Evaluate candidate on prioritization, communication, composure under pressure, and solution-oriented mindset.","HR Round"
