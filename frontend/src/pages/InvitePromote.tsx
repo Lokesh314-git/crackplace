@@ -131,57 +131,104 @@ export const InvitePromote: React.FC = () => {
         </div>
 
         <div className="p-6 md:p-8">
-          {activeTab === 'invite' && (
-            <div className="space-y-8">
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-center">
-                <h3 className="font-bold text-slate-800 mb-2">Your Referral Link</h3>
-                <p className="text-xs text-slate-500 mb-4">
-                  Share this link with your friends. You will earn rewards once they register AND complete their first qualifying activity.
-                </p>
-                <div className="flex items-center justify-center gap-2 max-w-xl mx-auto">
-                  <div className="bg-white border border-slate-300 rounded-lg px-4 py-3 font-mono text-xs flex-1 truncate text-left text-slate-600">
-                    {window.location.origin}/register?ref={userProfile?.uid}
+          {activeTab === 'invite' && (() => {
+            const totalInvited = referrals.length;
+            const successfulReferrals = referrals.filter(r => r.status === 'rewarded').length;
+            const totalCoinsEarned = referrals
+              .filter(r => r.status === 'rewarded' && r.rewardDetails?.coins)
+              .reduce((sum, r) => sum + r.rewardDetails.coins, 0);
+
+            return (
+              <div className="space-y-8">
+                {/* Reward Summary */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center">
+                    <div className="text-xs font-bold text-slate-500 uppercase mb-1">Friends Invited</div>
+                    <div className="text-2xl font-bold text-slate-800">{totalInvited}</div>
                   </div>
-                  <button onClick={copyReferralLink} className="bg-blue-600 text-white font-bold text-xs px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors">
-                    Copy Link
-                  </button>
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
+                    <div className="text-xs font-bold text-emerald-600 uppercase mb-1">Successful Referrals</div>
+                    <div className="text-2xl font-bold text-emerald-700">{successfulReferrals}</div>
+                  </div>
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center">
+                    <div className="text-xs font-bold text-amber-600 uppercase mb-1">Rewards Earned</div>
+                    <div className="text-2xl font-bold text-amber-700 flex items-center justify-center gap-1">
+                      <FaGift className="w-4 h-4" /> {totalCoinsEarned}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-center">
+                  <h3 className="font-bold text-slate-800 mb-2">Your Referral Link</h3>
+                  <p className="text-xs text-slate-500 mb-4">
+                    Share this link with your friends. You will earn rewards once they register AND complete their first qualifying activity (Practice Hub or Battle Arena).
+                  </p>
+                  <div className="flex items-center justify-center gap-2 max-w-xl mx-auto">
+                    <div className="bg-white border border-slate-300 rounded-lg px-4 py-3 font-mono text-xs flex-1 truncate text-left text-slate-600 select-all">
+                      {window.location.origin}/register?ref={userProfile?.uid}
+                    </div>
+                    <button onClick={copyReferralLink} className="bg-blue-600 text-white font-bold text-xs px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors">
+                      Copy Link
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    <FaCheck className="text-emerald-500" /> Invite History
+                  </h3>
+                  {referrals.length === 0 ? (
+                    <div className="text-center py-8 text-slate-500 text-sm bg-slate-50 rounded-xl border border-slate-100">
+                      You haven't referred anyone yet. Share your link to get started!
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                      <table className="w-full text-left text-sm text-slate-600">
+                        <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase font-bold text-slate-500">
+                          <tr>
+                            <th className="px-4 py-3">Friend</th>
+                            <th className="px-4 py-3">Joined</th>
+                            <th className="px-4 py-3">Status</th>
+                            <th className="px-4 py-3">Reward</th>
+                            <th className="px-4 py-3">Reward Date</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {referrals.map((ref) => (
+                            <tr key={ref.id} className="bg-white">
+                              <td className="px-4 py-3 font-medium text-slate-900">{ref.referredDisplayName || 'Anonymous User'}</td>
+                              <td className="px-4 py-3 text-xs">{new Date(ref.createdAt).toLocaleDateString()}</td>
+                              <td className="px-4 py-3">
+                                {ref.status === 'pending' ? (
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-200">
+                                    <FaClock className="w-3 h-3" /> In Progress
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">
+                                    <FaCheck className="w-3 h-3" /> Reward Earned
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-xs font-medium">
+                                {ref.status === 'rewarded' && ref.rewardDetails ? (
+                                  <span className="text-amber-600">+{ref.rewardDetails.coins} Coins</span>
+                                ) : (
+                                  <span className="text-slate-400">-</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-xs text-slate-500">
+                                {ref.rewardedAt ? new Date(ref.rewardedAt).toLocaleDateString() : '-'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               </div>
-
-              <div>
-                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                  <FaCheck className="text-emerald-500" /> Your Referrals
-                </h3>
-                {referrals.length === 0 ? (
-                  <div className="text-center py-8 text-slate-500 text-sm bg-slate-50 rounded-xl border border-slate-100">
-                    You haven't referred anyone yet. Share your link to get started!
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {referrals.map((ref) => (
-                      <div key={ref.id} className="flex items-center justify-between bg-white border border-slate-200 p-4 rounded-xl">
-                        <div>
-                          <div className="font-bold text-sm">{ref.referredDisplayName || 'Anonymous User'}</div>
-                          <div className="text-xs text-slate-500">Registered: {new Date(ref.createdAt).toLocaleDateString()}</div>
-                        </div>
-                        <div>
-                          {ref.status === 'pending' ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-200">
-                              <FaClock className="w-3 h-3" /> Activity Required
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">
-                              <FaCheck className="w-3 h-3" /> Rewarded
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           {activeTab === 'promote' && (
             <div className="space-y-8">

@@ -3,6 +3,7 @@ import { RewardCalculator, BattleParticipantInput, BattleResultPackage, PlayerRe
 import { LevelCalculator } from './levelCalculator';
 import { GAME_CONFIG } from '../config/gameConfig';
 import { updateDailyStreak } from '../../utils/gamification';
+import { checkAndFulfillReferral } from '../../services/referralService';
 
 // In-memory idempotency cache for fast retrieval and local dev fallback
 const completedBattlesCache = new Map<string, BattleResultPackage>();
@@ -129,6 +130,10 @@ export class BattleResultProcessor {
       // Commit batch atomically
       await batch.commit();
       console.log(`[BattleResultProcessor] Successfully committed Firestore rewards transaction for battle ${resultPackage.battleId}`);
+
+      // Verify referral eligibility for both players asynchronously
+      checkAndFulfillReferral(resultPackage.playerA.userId);
+      checkAndFulfillReferral(resultPackage.playerB.userId);
     } catch (err) {
       console.error(`[BattleResultProcessor] Failed to commit Firestore transaction for battle ${resultPackage.battleId}:`, err);
     }

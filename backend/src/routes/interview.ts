@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import { calculateLevelFromXP, calculateLevelProgress, LevelCalculator, syncMissionsState, processMissionProgress, checkAndUnlockAchievements, updateDailyStreak } from '../utils/gamification';
 import { calculatePlacementReadiness } from '../utils/readiness';
 import { XpTransactionService } from '../services/XpTransactionService';
+import { checkAndFulfillReferral } from '../services/referralService';
 
 const router = Router();
 
@@ -316,6 +317,9 @@ JSON Schema:
               });
             }
           }
+          
+          // Verify referral eligibility asynchronously
+          checkAndFulfillReferral(req.user.uid);
         } catch (err) {
           console.error('[INTERVIEW API] Transaction update failed:', err);
         }
