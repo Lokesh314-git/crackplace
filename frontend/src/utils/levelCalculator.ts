@@ -19,18 +19,13 @@ export const GAME_CONFIG = {
 };
 
 /**
- * Cumulative XP threshold required to unlock a specific level.
- * Level 1: 100 XP (0..99 is Level 1)
- * Level 2: 250 XP (100..249 is Level 2)
- * Level 3: 450 XP (250..449 is Level 3)
- * Level 4: 700 XP (450..699 is Level 4)
- * Level 5: 1000 XP (700..999 is Level 5)
+ * Cumulative XP threshold required to complete a specific level (and reach level + 1).
+ * e.g., getXpRequiredForLevel(1) returns the total XP needed to reach Level 2.
  */
 export function getXpRequiredForLevel(level: number): number {
-  if (level <= 1) return GAME_CONFIG.levels.level1Xp;
-  let total = GAME_CONFIG.levels.level1Xp;
-  for (let i = 2; i <= level; i++) {
-    total += GAME_CONFIG.levels.level1Xp + GAME_CONFIG.levels.levelGrowthIncrement * (i - 1);
+  let total = 0;
+  for (let i = 1; i <= level; i++) {
+    total += Math.floor(1000 * Math.pow(i, 1.6));
   }
   return total;
 }

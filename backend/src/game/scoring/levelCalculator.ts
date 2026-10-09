@@ -42,13 +42,13 @@ export interface XpRewardEvaluation {
 
 export class LevelCalculator {
   /**
-   * Cumulative XP threshold required to unlock a specific level
+   * Cumulative XP threshold required to complete a specific level (and reach level + 1).
+   * e.g., getXpRequiredForLevel(1) returns the total XP needed to reach Level 2.
    */
   public static getXpRequiredForLevel(level: number): number {
-    if (level <= 1) return GAME_CONFIG.levels.level1Xp;
-    let total = GAME_CONFIG.levels.level1Xp;
-    for (let i = 2; i <= level; i++) {
-      total += GAME_CONFIG.levels.level1Xp + GAME_CONFIG.levels.levelGrowthIncrement * (i - 1);
+    let total = 0;
+    for (let i = 1; i <= level; i++) {
+      total += Math.floor(1000 * Math.pow(i, 1.6));
     }
     return total;
   }

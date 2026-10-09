@@ -343,7 +343,7 @@ app.post('/api/auth/verify', strictAuthLimiter, verifyToken, async (req: Authent
 // ----------------------------------------------------
 app.get('/api/leaderboard', verifyToken, async (req: AuthenticatedRequest, res) => {
   const rankingType = req.query.type === 'weekly' ? 'weekly' : 'global';
-  const limitCount = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
+  const limitCount = Math.min(100, Math.max(1, Number(req.query.limit) || 100));
   const cacheKey = `leaderboard:${rankingType}:${limitCount}`;
 
   try {

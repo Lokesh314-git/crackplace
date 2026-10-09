@@ -35,6 +35,7 @@ export const Leaderboards: React.FC = () => {
 
   const [selectedUser, setSelectedUser] = useState<LeaderboardUser | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   const handleUserClick = (user: LeaderboardUser, actualRank: number) => {
     setSelectedUser({ ...user, rank: actualRank });
@@ -77,6 +78,7 @@ export const Leaderboards: React.FC = () => {
   }, [token]);
 
   useEffect(() => {
+    setExpanded(false); // Reset expansion when tab changes
     fetchLeaderboard(tab);
   }, [tab, fetchLeaderboard]);
 
@@ -102,7 +104,14 @@ export const Leaderboards: React.FC = () => {
   );
 
   const topThree = filteredRanks.slice(0, 3);
-  const remaining = filteredRanks.slice(3);
+  const remainingAll = filteredRanks.slice(3);
+  const showMoreThreshold = 25;
+  const isExpandable = remainingAll.length > (showMoreThreshold - 3) && !search;
+  
+  // Show all if expanded or searching. Otherwise show up to 25 top users total (so 22 in remaining)
+  const remaining = (expanded || search) 
+    ? remainingAll 
+    : remainingAll.slice(0, showMoreThreshold - 3);
 
   const currentUserRankIndex = userProfile ? ranks.findIndex(r => r.uid === userProfile.uid) : -1;
   const currentUserRankDisplay = currentUserRankIndex >= 0 ? `#${currentUserRankIndex + 1}` : 'Unranked';
@@ -393,6 +402,25 @@ export const Leaderboards: React.FC = () => {
               </div>
             )}
           </div>
+          
+          {isExpandable && !expanded && (
+            <div className="flex justify-center mt-6">
+              <button 
+                onClick={() => setExpanded(true)}
+                className="px-6 py-2.5 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 border border-border-dark text-sm font-semibold text-text-primary transition-colors cursor-pointer shadow-xs"
+              >
+                Show More
+              </button>
+            </div>
+          )}
+          
+          {expanded && !search && remainingAll.length > (showMoreThreshold - 3) && (
+            <div className="flex justify-center mt-6">
+              <span className="text-xs font-semibold text-text-muted tracking-wide uppercase">
+                Showing Top {ranks.length} Players
+              </span>
+            </div>
+          )}
         </>
       )}
 
