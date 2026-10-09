@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_URL = import.meta.env.VITE_API_BASE_URL || 'https://crackplace-backend-lfs5.onrender.com';
 
 async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
   const { data: { session } } = await supabase.auth.getSession();
@@ -16,13 +16,32 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
     ...options.headers,
   };
   
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    ...options,
-    headers,
-  });
+  let response;
+  try {
+    response = await fetch(`${API_URL}${endpoint}`, {
+      ...options,
+      headers,
+    });
+  } catch (error: any) {
+    throw new Error(`Network error: Failed to connect to backend (${API_URL}). Make sure the backend is running. Details: ${error.message}`);
+  }
   
   if (!response.ok) {
-    const errText = await response.text();
+    if (response.status === 401) {
+      throw new Error('Unauthorized: Your session may have expired. Please sign in again.');
+    } else if (response.status === 403) {
+      throw new Error('Forbidden: You do not have permission to perform this action.');
+    } else if (response.status === 404) {
+      throw new Error(`Not Found: The requested endpoint (${endpoint}) does not exist on the backend.`);
+    }
+
+    let errText = '';
+    try {
+      const errData = await response.json();
+      errText = errData.error || errData.message || JSON.stringify(errData);
+    } catch {
+      errText = await response.text();
+    }
     throw new Error(`API error (${response.status}): ${errText}`);
   }
   
