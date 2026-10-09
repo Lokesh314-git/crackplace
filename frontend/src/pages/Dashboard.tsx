@@ -9,7 +9,6 @@ import {
   FaCoins, 
   FaCrown,
   FaArrowRight,
-  FaCircleQuestion,
   FaComments,
   FaBookOpen,
   FaBolt
@@ -33,13 +32,6 @@ export const Dashboard: React.FC = () => {
       desc: 'Topic-wise practice across Aptitude, DSA, DBMS & OS.',
       icon: <FaCode className="w-4 h-4" />,
       tag: 'Core Topics',
-    },
-    {
-      to: '/quiz',
-      title: 'AI Placement Quiz',
-      desc: 'Generate adaptive technical MCQs on target company patterns.',
-      icon: <FaCircleQuestion className="w-4 h-4" />,
-      tag: 'Adaptive AI',
     },
     {
       to: '/coding',

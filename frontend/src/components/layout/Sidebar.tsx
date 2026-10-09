@@ -5,7 +5,7 @@ import { calculateLevelFromXP } from '../../utils/levelCalculator';
 import { getUserAvatarUrl } from '../../utils/avatarResolver';
 import { 
   FaHouse, 
-  FaCircleQuestion, 
+  FaLayerGroup, 
   FaCode, 
   FaComments, 
   FaGamepad, 
@@ -37,8 +37,7 @@ export const Sidebar: React.FC = () => {
       title: 'LEARNING & PRACTICE',
       items: [
         { to: '/dashboard', label: 'Dashboard', icon: <FaHouse className="w-4 h-4" /> },
-        { to: '/practice', label: 'Practice Hub', icon: <FaCode className="w-4 h-4" /> },
-        { to: '/quiz', label: 'AI Quiz', icon: <FaCircleQuestion className="w-4 h-4" /> },
+        { to: '/practice', label: 'Practice Hub', icon: <FaLayerGroup className="w-4 h-4" /> },
         { to: '/coding', label: 'Coding Workspace', icon: <FaCode className="w-4 h-4" /> },
         { to: '/hr-interview', label: 'HR Practice', icon: <FaComments className="w-4 h-4" /> },
       ]

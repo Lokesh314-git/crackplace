@@ -7,7 +7,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
 import Dashboard from './pages/Dashboard';
-import Quiz from './pages/Quiz';
+import PracticeFlow from './pages/PracticeFlow';
 import Coding from './pages/Coding';
 import HRInterview from './pages/HRInterview';
 import Battle from './pages/Battle';
@@ -79,11 +79,11 @@ export const App: React.FC = () => {
         <Route element={<ProtectedRoute />}>
           <Route element={<DashboardLayout />}>
             <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/quiz" element={<Quiz />} />
+            <Route path="/practice" element={<PracticeHub />} />
+            <Route path="/practice/:subject" element={<PracticeFlow />} />
             <Route path="/coding" element={<Coding />} />
             <Route path="/hr-interview" element={<HRInterview />} />
             <Route path="/battle" element={<Battle />} />
-            <Route path="/practice" element={<PracticeHub />} />
             <Route path="/leaderboard" element={<Leaderboards />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/personalization" element={<Personalization />} />

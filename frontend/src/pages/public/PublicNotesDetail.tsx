@@ -91,7 +91,7 @@ export const PublicNotesDetail: React.FC = () => {
   });
 
   return (
-    <div className="min-h-screen bg-bg-dark text-white gradient-bg flex flex-col justify-between py-12 px-6 md:px-12">
+    <div className="min-h-screen bg-bg-dark text-white gradient-bg flex flex-col justify-between py-12 px-6 md:px-12" data-theme="dark">
       <div className="max-w-3xl mx-auto w-full space-y-8">
         <Link 
           to="/notes" 

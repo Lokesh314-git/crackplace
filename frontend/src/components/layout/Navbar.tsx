@@ -21,8 +21,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
 
   const getPageTitle = (path: string) => {
     if (path.includes('/dashboard')) return { title: 'Dashboard', desc: 'Placement preparation overview & progress' };
-    if (path.includes('/practice')) return { title: 'Practice Hub', desc: 'Curated topics & problem categories' };
-    if (path.includes('/quiz')) return { title: 'AI Placement Quiz', desc: 'Adaptive technical assessment questions' };
+    if (path.includes('/practice')) return { title: 'Practice Hub', desc: 'Placement practice and assessments' };
     if (path.includes('/coding')) return { title: 'Coding Workspace', desc: 'Interactive algorithmic problem solving' };
     if (path.includes('/hr-interview')) return { title: 'HR Practice', desc: 'Behavioral & behavioral mock interview' };
     if (path.includes('/battle')) return { title: 'Battle Arena', desc: 'Real-time 1v1 multiplayer placement battle' };

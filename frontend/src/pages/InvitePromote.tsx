@@ -345,7 +345,7 @@ export const InvitePromote: React.FC = () => {
                                 </div>
                                 {cash.fulfillmentReference && (
                                   <div className="text-[10px] text-slate-500 mt-1">
-                                    Ref: {cash.fulfillmentReference}
+                                    Transaction ID: {cash.fulfillmentReference}
                                   </div>
                                 )}
                               </div>

@@ -129,7 +129,7 @@ export const LandingPage: React.FC = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-bg-dark text-white gradient-bg flex flex-col justify-between overflow-x-hidden">
+    <div className="min-h-screen bg-bg-dark text-white gradient-bg flex flex-col justify-between overflow-x-hidden" data-theme="dark">
       {/* Header Navigation */}
       <header className="fixed top-0 left-0 right-0 z-40 bg-bg-dark/65 backdrop-blur-xl border-b border-white/5 h-20 flex items-center px-6 md:px-12 justify-between">
         <div className="flex items-center gap-3">

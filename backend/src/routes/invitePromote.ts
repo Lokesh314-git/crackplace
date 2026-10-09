@@ -197,7 +197,7 @@ invitePromoteRouter.post('/admin/promotions/:id/review', adminAuth, async (req: 
             userId: promoData.userId,
             promotionId: promoData.id,
             amount: rewardsData.cashAmount,
-            currency: rewardsData.currency || 'INR',
+            currency: 'INR',
             status: 'pending', // Make sure this matches cash workflow 'pending'
             adminId: req.user!.uid,
             createdAt: new Date().toISOString(),

@@ -19,14 +19,14 @@ export const Card: React.FC<CardProps> = ({
   const isInteractive = hoverable || interactive;
   return (
     <div
-      className={`bg-white border border-slate-200 rounded-xl overflow-hidden transition-all duration-150 shadow-xs ${
-        isInteractive ? 'hover:border-slate-300 hover:shadow-sm cursor-pointer' : ''
+      className={`bg-bg-surface border border-border-subtle rounded-xl overflow-hidden transition-all duration-150 shadow-xs ${
+        isInteractive ? 'hover:border-border-focus hover:shadow-sm cursor-pointer' : ''
       } ${className}`}
       {...props}
     >
-      {header && <div className="px-5 py-4 border-b border-slate-100">{header}</div>}
+      {header && <div className="px-5 py-4 border-b border-border-subtle">{header}</div>}
       <div className="p-5">{children}</div>
-      {footer && <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-100">{footer}</div>}
+      {footer && <div className="px-5 py-3.5 bg-bg-elevated border-t border-border-subtle">{footer}</div>}
     </div>
   );
 };

@@ -69,23 +69,23 @@ export const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-100 px-4 py-12" data-theme="dark">
+    <div className="min-h-screen flex items-center justify-center bg-bg-primary text-text-primary px-4 py-12">
       <div className="w-full max-w-md">
         {/* Brand Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary-600 text-white mb-3 shadow-md">
             <FaGraduationCap className="w-6 h-6" />
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">
+          <h1 className="text-2xl font-bold text-text-primary tracking-tight">
             CrackPlace AI
           </h1>
-          <p className="text-xs text-slate-400 mt-1">Placement Preparation & Assessment Platform</p>
+          <p className="text-xs text-text-secondary mt-1">Placement Preparation & Assessment Platform</p>
         </div>
 
         <Card className="p-8">
           <div className="mb-6">
-            <h2 className="text-lg font-semibold text-white">Candidate Sign In</h2>
-            <p className="text-xs text-slate-400 mt-0.5">Enter your credentials to continue your preparation</p>
+            <h2 className="text-lg font-semibold text-text-primary">Candidate Sign In</h2>
+            <p className="text-xs text-text-secondary mt-0.5">Enter your credentials to continue your preparation</p>
           </div>
 
           {/* Error Alert */}
@@ -99,9 +99,9 @@ export const Login: React.FC = () => {
           {/* Login Form */}
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1.5">Email Address</label>
+              <label className="block text-xs font-medium text-text-primary mb-1.5">Email Address</label>
               <div className="relative">
-                <FaEnvelope className="absolute left-3 top-3 text-slate-500 w-3.5 h-3.5" />
+                <FaEnvelope className="absolute left-3 top-3 text-text-muted w-3.5 h-3.5" />
                 <input
                   type="email"
                   placeholder="student@college.edu"
@@ -109,18 +109,18 @@ export const Login: React.FC = () => {
                   {...registerField('email')}
                 />
               </div>
-              {errors.email && <p className="text-rose-400 text-xs mt-1">{errors.email.message}</p>}
+              {errors.email && <p className="text-brand-error text-xs mt-1">{errors.email.message}</p>}
             </div>
 
             <div>
               <div className="flex justify-between items-center mb-1.5">
-                <label className="block text-xs font-medium text-slate-300">Password</label>
-                <Link to="/forgot-password" className="text-xs text-primary-400 hover:text-primary-300 transition-colors">
+                <label className="block text-xs font-medium text-text-primary">Password</label>
+                <Link to="/forgot-password" className="text-xs text-brand-primary hover:opacity-80 transition-opacity">
                   Forgot password?
                 </Link>
               </div>
               <div className="relative">
-                <FaLock className="absolute left-3 top-3 text-slate-500 w-3.5 h-3.5" />
+                <FaLock className="absolute left-3 top-3 text-text-muted w-3.5 h-3.5" />
                 <input
                   type="password"
                   placeholder="••••••••"
@@ -128,7 +128,7 @@ export const Login: React.FC = () => {
                   {...registerField('password')}
                 />
               </div>
-              {errors.password && <p className="text-rose-400 text-xs mt-1">{errors.password.message}</p>}
+              {errors.password && <p className="text-brand-error text-xs mt-1">{errors.password.message}</p>}
             </div>
 
             <Button
@@ -144,9 +144,9 @@ export const Login: React.FC = () => {
 
           {/* Divider */}
           <div className="flex items-center my-6">
-            <div className="flex-1 h-px bg-slate-800"></div>
-            <span className="px-3 text-xs text-slate-500 uppercase font-medium">Or continue with</span>
-            <div className="flex-1 h-px bg-slate-800"></div>
+            <div className="flex-1 h-px bg-border-subtle"></div>
+            <span className="px-3 text-xs text-text-muted uppercase font-medium">Or continue with</span>
+            <div className="flex-1 h-px bg-border-subtle"></div>
           </div>
 
           {/* Google OAuth Button */}
@@ -162,9 +162,9 @@ export const Login: React.FC = () => {
           </Button>
 
           {/* Footer Link */}
-          <p className="text-center text-xs text-slate-400 mt-6">
+          <p className="text-center text-xs text-text-secondary mt-6">
             New to CrackPlace?{' '}
-            <Link to="/register" className="font-semibold text-primary-400 hover:text-primary-300 transition-colors">
+            <Link to="/register" className="font-semibold text-brand-primary hover:opacity-80 transition-opacity">
               Create an account
             </Link>
           </p>

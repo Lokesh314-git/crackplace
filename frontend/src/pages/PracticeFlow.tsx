@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuizStore } from '../store/quizStore';
 import { useAuthStore } from '../store/authStore';
 import { 
@@ -19,7 +19,7 @@ import {
 } from 'react-icons/fa6';
 import { Card, Badge, Button, ProgressBar } from '../components/ui';
 import { SUBJECT_LIST, normalizeSubjectSlug } from '../constants/subjects';
-import type { SubjectConfig } from '../constants/subjects';
+
 import { questionService } from '../services/questionService';
 
 const ICON_MAP: Record<string, React.ReactNode> = {
@@ -35,10 +35,11 @@ const ICON_MAP: Record<string, React.ReactNode> = {
 
 const DIFFICULTIES = ['easy', 'medium', 'hard'] as const;
 const COUNTS = [5, 10, 15, 20];
-const COMPANIES = ['Google', 'Amazon', 'Microsoft', 'Zoho', 'TCS', 'Infosys', 'Wipro', 'Accenture'];
 
-export const Quiz: React.FC = () => {
-  const [searchParams] = useSearchParams();
+
+export const PracticeFlow: React.FC = () => {
+  const { subject } = useParams();
+  const navigate = useNavigate();
   const { token } = useAuthStore();
   const {
     currentQuiz,
@@ -57,26 +58,15 @@ export const Quiz: React.FC = () => {
     resetQuizState
   } = useQuizStore();
 
-  // Setup state with URL param or default
-  const initialCategory = normalizeSubjectSlug(searchParams.get('category') || 'quantitative_aptitude');
-  const [selectedCategory, setSelectedCategory] = useState(initialCategory);
+  const selectedCategory = normalizeSubjectSlug(subject || 'quantitative_aptitude');
+  const subjectConfig = SUBJECT_LIST.find(s => s.slug === selectedCategory) || SUBJECT_LIST[0];
   const [selectedTopic, setSelectedTopic] = useState('All');
   const [availableTopics, setAvailableTopics] = useState<string[]>([]);
   const [selectedDifficulty, setSelectedDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [selectedCount, setSelectedCount] = useState(5);
-  const [selectedCompany, setSelectedCompany] = useState('');
-  
   // Local UI status
-  const [history, setHistory] = useState<any[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Sync category from URL param if query changes
-  useEffect(() => {
-    const paramCat = searchParams.get('category');
-    if (paramCat) {
-      setSelectedCategory(normalizeSubjectSlug(paramCat));
-    }
-  }, [searchParams]);
 
   // Load available topics whenever category changes
   useEffect(() => {
@@ -90,21 +80,6 @@ export const Quiz: React.FC = () => {
     return () => { isMounted = false; };
   }, [selectedCategory]);
 
-  // Load Quiz History on setup
-  useEffect(() => {
-    if (quizStatus === 'idle' && token) {
-      fetch('/api/quiz/history', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-        .then(res => res.json())
-        .then(data => {
-          if (Array.isArray(data)) setHistory(data);
-        })
-        .catch(err => console.error('Failed to fetch quiz history:', err));
-    }
-  }, [quizStatus, token]);
 
   // Quiz active timer
   useEffect(() => {
@@ -137,7 +112,7 @@ export const Quiz: React.FC = () => {
           topic: selectedTopic !== 'All' ? selectedTopic : undefined,
           difficulty: selectedDifficulty,
           count: selectedCount,
-          company: selectedCompany || undefined
+          
         })
       });
 
@@ -201,20 +176,25 @@ export const Quiz: React.FC = () => {
   // State 1: Configuration View
   if (quizStatus === 'idle') {
     return (
-      <div className="space-y-6">
+      <div className="max-w-2xl mx-auto space-y-6">
+        <Link to="/practice" className="text-sm font-semibold text-blue-600 hover:underline flex items-center gap-1 w-max">
+          &larr; Back to Practice Hub
+        </Link>
         {/* Header */}
         <div className="space-y-1">
           <div className="flex items-center gap-2">
+            <span className="shrink-0 text-blue-600">
+              {ICON_MAP[subjectConfig.iconName] || <FaCode className="w-5 h-5" />}
+            </span>
             <Badge variant="primary" size="sm">
-              Supabase Question Bank
+              {subjectConfig.badge}
             </Badge>
-            <span className="text-xs text-slate-400">Standardized Placement Repository</span>
           </div>
-          <h1 className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">
-            Placement Practice & Assessments
+          <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight mt-2">
+            {subjectConfig.name}
           </h1>
-          <p className="text-xs md:text-sm text-slate-600 max-w-2xl">
-            Choose domain subjects, specific syllabus topics, and difficulty levels powered by the single source of truth question bank.
+          <p className="text-sm text-slate-600 max-w-2xl">
+            Customize your practice session. Questions are curated from the centralized CrackPlace Question Bank.
           </p>
         </div>
 
@@ -224,150 +204,65 @@ export const Quiz: React.FC = () => {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Setup Config Panel */}
-          <div className="lg:col-span-2">
-            <Card
-              header={
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                  Assessment Configuration
-                </h3>
-              }
-            >
-              <div className="space-y-5">
-                {/* Category Select */}
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-slate-700">Placement Domain (8 Subjects)</label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                    {SUBJECT_LIST.map((sub: SubjectConfig) => (
-                      <button
-                        key={sub.slug}
-                        type="button"
-                        onClick={() => setSelectedCategory(sub.slug)}
-                        className={`p-3 rounded-lg border flex items-center gap-2 text-xs font-semibold transition-all cursor-pointer text-left
-                          ${selectedCategory === sub.slug
-                            ? 'border-blue-600 bg-blue-50 text-blue-700'
-                            : 'border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:border-slate-300'
-                          }`}
-                      >
-                        <span className="shrink-0 text-blue-600">
-                          {ICON_MAP[sub.iconName] || <FaCode className="w-4 h-4" />}
-                        </span>
-                        <span className="truncate">{sub.shortName}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  {/* Topic Select */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-slate-700">Topic Filter</label>
-                    <select
-                      value={selectedTopic}
-                      onChange={(e) => setSelectedTopic(e.target.value)}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-blue-600"
-                    >
-                      <option value="All">All Topics (Mixed)</option>
-                      {availableTopics.map(t => (
-                        <option key={t} value={t}>{t}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Difficulty */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-slate-700">Difficulty Level</label>
-                    <select
-                      value={selectedDifficulty}
-                      onChange={(e) => setSelectedDifficulty(e.target.value as any)}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-blue-600"
-                    >
-                      {DIFFICULTIES.map(diff => (
-                        <option key={diff} value={diff} className="capitalize">{diff}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Count */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-slate-700">Questions Count</label>
-                    <select
-                      value={selectedCount}
-                      onChange={(e) => setSelectedCount(Number(e.target.value))}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-blue-600"
-                    >
-                      {COUNTS.map(count => (
-                        <option key={count} value={count}>{count} Questions</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700">Company Pattern (Optional)</label>
-                  <select
-                    value={selectedCompany}
-                    onChange={(e) => setSelectedCompany(e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-blue-600"
-                  >
-                    <option value="">General Placement Pattern</option>
-                    {COMPANIES.map(company => (
-                      <option key={company} value={company}>{company}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="pt-2">
-                  <Button
-                    variant="primary"
-                    size="md"
-                    onClick={handleLaunchQuiz}
-                    className="w-full"
-                  >
-                    Start Assessment
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          </div>
-
-          {/* History Sidebar */}
-          <div>
-            <Card
-              header={
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                  Recent Assessments
-                </h3>
-              }
-            >
-              {history.length === 0 ? (
-                <p className="text-xs text-slate-500 text-center py-6">No previous assessments found.</p>
-              ) : (
-                <div className="space-y-2.5 max-h-[360px] overflow-y-auto pr-1">
-                  {history.map((h, i) => (
-                    <div key={h.id || i} className="p-3 rounded-lg border border-slate-200 bg-slate-50 text-xs">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="font-semibold text-slate-900 truncate max-w-[140px]">{h.category}</span>
-                        <Badge variant={h.difficulty === 'hard' ? 'error' : h.difficulty === 'medium' ? 'warning' : 'primary'} size="sm">
-                          {h.difficulty}
-                        </Badge>
-                      </div>
-                      <div className="flex justify-between items-center text-[11px] text-slate-500 pt-1 border-t border-slate-200/80">
-                        <span>{new Date(h.createdAt).toLocaleDateString()}</span>
-                        {h.results ? (
-                          <span className="font-bold text-emerald-600">{h.results.score}% Score</span>
-                        ) : (
-                          <span className="text-slate-400 italic">Incomplete</span>
-                        )}
-                      </div>
-                    </div>
+        <Card>
+          <div className="space-y-5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* Topic Select */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700">Topic</label>
+                <select
+                  value={selectedTopic}
+                  onChange={(e) => setSelectedTopic(e.target.value)}
+                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-blue-600"
+                >
+                  <option value="All">All Topics</option>
+                  {availableTopics.map(t => (
+                    <option key={t} value={t}>{t}</option>
                   ))}
-                </div>
-              )}
-            </Card>
+                </select>
+              </div>
+
+              {/* Difficulty */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700">Difficulty</label>
+                <select
+                  value={selectedDifficulty}
+                  onChange={(e) => setSelectedDifficulty(e.target.value as any)}
+                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-blue-600"
+                >
+                  {DIFFICULTIES.map(diff => (
+                    <option key={diff} value={diff} className="capitalize">{diff}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Count */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700">Questions</label>
+                <select
+                  value={selectedCount}
+                  onChange={(e) => setSelectedCount(Number(e.target.value))}
+                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-blue-600"
+                >
+                  {COUNTS.map(count => (
+                    <option key={count} value={count}>{count} Questions</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <Button
+                variant="primary"
+                size="md"
+                onClick={handleLaunchQuiz}
+                className="w-full"
+              >
+                Start Practice
+              </Button>
+            </div>
           </div>
-        </div>
+        </Card>
       </div>
     );
   }
@@ -598,8 +493,8 @@ export const Quiz: React.FC = () => {
 
         {/* Bottom CTAs */}
         <div className="flex items-center justify-center gap-3 pt-2">
-          <Button variant="outline" size="md" onClick={resetQuizState}>
-            Back to Quiz Studio
+          <Button variant="outline" size="md" onClick={() => navigate('/practice')}>
+            Back to Practice Hub
           </Button>
           <Button variant="primary" size="md" onClick={handleLaunchQuiz}>
             Retake Assessment
@@ -612,4 +507,5 @@ export const Quiz: React.FC = () => {
   return null;
 };
 
-export default Quiz;
+export default PracticeFlow;
+

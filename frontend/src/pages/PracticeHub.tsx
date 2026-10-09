@@ -1,17 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { 
-  FaCode, 
-  FaComments, 
-  FaCalculator, 
-  FaDatabase, 
-  FaServer, 
-  FaNetworkWired, 
-  FaBrain, 
-  FaFont, 
+import {
+  FaCode,
+  FaComments,
+  FaCalculator,
+  FaDatabase,
+  FaServer,
+  FaNetworkWired,
+  FaBrain,
+  FaFont,
   FaCirclePlay
 } from 'react-icons/fa6';
 import { Badge } from '../components/ui';
+import { useAuthStore } from '../store/authStore';
 import { SUBJECT_LIST } from '../constants/subjects';
 import type { SubjectConfig } from '../constants/subjects';
 import { questionService } from '../services/questionService';
@@ -29,6 +30,8 @@ const ICON_MAP: Record<string, React.ReactNode> = {
 
 export const PracticeHub: React.FC = () => {
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const { token } = useAuthStore();
+  const [history, setHistory] = useState<any[]>([]);
 
   useEffect(() => {
     // Dynamically load live counts from Supabase Question Bank
@@ -40,7 +43,20 @@ export const PracticeHub: React.FC = () => {
         // silent fallback
       }
     });
-  }, []);
+
+    if (token) {
+      fetch('/api/quiz/history', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setHistory(data);
+        })
+        .catch(err => console.error('Failed to fetch quiz history:', err));
+    }
+  }, [token]);
 
   return (
     <div className="space-y-6">
@@ -64,12 +80,10 @@ export const PracticeHub: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {SUBJECT_LIST.map((item: SubjectConfig) => {
           const count = counts[item.slug];
-          const displayCount = count !== undefined && count > 0 
-            ? `${count} Active Questions` 
+          const displayCount = count !== undefined && count > 0
+            ? `${count} Active Questions`
             : 'Supabase Question Bank';
-          const targetUrl = item.slug === 'hr_behavioral' 
-            ? '/hr-interview' 
-            : `/quiz?category=${encodeURIComponent(item.slug)}`;
+          const targetUrl = `/practice/${encodeURIComponent(item.slug)}`;
 
           return (
             <div
@@ -114,7 +128,35 @@ export const PracticeHub: React.FC = () => {
           );
         })}
       </div>
-    </div>
+      {/* Recent Assessments */ }
+  {
+    history.length > 0 && (
+      <div className="mt-8">
+        <h2 className="text-lg font-bold text-slate-900 mb-4">Recent Assessments</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {history.map((h, i) => (
+            <div key={h.id || i} className="p-4 rounded-xl border border-slate-200 bg-white shadow-xs">
+              <div className="flex justify-between items-center mb-2">
+                <span className="font-semibold text-slate-900 truncate">{h.category}</span>
+                <Badge variant={h.difficulty === 'hard' ? 'error' : h.difficulty === 'medium' ? 'warning' : 'primary'} size="sm">
+                  {h.difficulty}
+                </Badge>
+              </div>
+              <div className="flex justify-between items-center text-xs text-slate-500 pt-2 border-t border-slate-100">
+                <span>{new Date(h.createdAt).toLocaleDateString()}</span>
+                {h.results ? (
+                  <span className="font-bold text-emerald-600">{h.results.score}% Score</span>
+                ) : (
+                  <span className="text-slate-400 italic">Incomplete</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+    </div >
   );
 };
 
