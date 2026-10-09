@@ -1,16 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { db } from '../config/firebase';
 import { FieldValue } from 'firebase-admin/firestore';
+import { adminAuth, AdminAuthenticatedRequest } from '../middleware/adminAuth';
+import { verifyToken, AuthenticatedRequest } from '../middleware/auth';
 
 export const invitePromoteRouter = Router();
 
-// Extend the Request interface if not already done in the app for authenticated requests
-interface AuthenticatedRequest extends Request {
-  user?: any;
-}
-
 // 1. Track a new referral (called by the frontend after a referred user registers)
-invitePromoteRouter.post('/referral/track', async (req: AuthenticatedRequest, res: Response) => {
+invitePromoteRouter.post('/referral/track', verifyToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { referrerId } = req.body;
     const newUserId = req.user?.uid;
@@ -48,7 +45,7 @@ invitePromoteRouter.post('/referral/track', async (req: AuthenticatedRequest, re
 });
 
 // 2. Fetch current user's referrals
-invitePromoteRouter.get('/referrals', async (req: AuthenticatedRequest, res: Response) => {
+invitePromoteRouter.get('/referrals', verifyToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const uid = req.user?.uid;
     if (!uid) return res.status(401).json({ error: 'Unauthorized' });
@@ -64,7 +61,7 @@ invitePromoteRouter.get('/referrals', async (req: AuthenticatedRequest, res: Res
 });
 
 // 3. Submit a new promotion (influencer video)
-invitePromoteRouter.post('/promotions', async (req: AuthenticatedRequest, res: Response) => {
+invitePromoteRouter.post('/promotions', verifyToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { videoUrl, platform } = req.body;
     const uid = req.user?.uid;
@@ -93,7 +90,7 @@ invitePromoteRouter.post('/promotions', async (req: AuthenticatedRequest, res: R
 });
 
 // 4. Fetch current user's promotions
-invitePromoteRouter.get('/promotions', async (req: AuthenticatedRequest, res: Response) => {
+invitePromoteRouter.get('/promotions', verifyToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const uid = req.user?.uid;
     if (!uid) return res.status(401).json({ error: 'Unauthorized' });
@@ -109,7 +106,7 @@ invitePromoteRouter.get('/promotions', async (req: AuthenticatedRequest, res: Re
 });
 
 // 5. Fetch current user's cash rewards
-invitePromoteRouter.get('/cash-rewards', async (req: AuthenticatedRequest, res: Response) => {
+invitePromoteRouter.get('/cash-rewards', verifyToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const uid = req.user?.uid;
     if (!uid) return res.status(401).json({ error: 'Unauthorized' });
@@ -129,7 +126,7 @@ invitePromoteRouter.get('/cash-rewards', async (req: AuthenticatedRequest, res: 
 // ==========================================
 
 // 6. Get all promotions for admin
-invitePromoteRouter.get('/admin/promotions', async (req: AuthenticatedRequest, res: Response) => {
+invitePromoteRouter.get('/admin/promotions', adminAuth, async (req: AdminAuthenticatedRequest, res: Response) => {
   try {
     if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
 
@@ -144,7 +141,7 @@ invitePromoteRouter.get('/admin/promotions', async (req: AuthenticatedRequest, r
 });
 
 // 7. Review and grant rewards for a promotion
-invitePromoteRouter.post('/admin/promotions/:id/review', async (req: AuthenticatedRequest, res: Response) => {
+invitePromoteRouter.post('/admin/promotions/:id/review', adminAuth, async (req: AdminAuthenticatedRequest, res: Response) => {
   try {
     if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
 
@@ -213,7 +210,7 @@ invitePromoteRouter.post('/admin/promotions/:id/review', async (req: Authenticat
 });
 
 // 8. Get all cash rewards for admin
-invitePromoteRouter.get('/admin/cash-rewards', async (req: AuthenticatedRequest, res: Response) => {
+invitePromoteRouter.get('/admin/cash-rewards', adminAuth, async (req: AdminAuthenticatedRequest, res: Response) => {
   try {
     if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
 
@@ -228,7 +225,7 @@ invitePromoteRouter.get('/admin/cash-rewards', async (req: AuthenticatedRequest,
 });
 
 // 9. Update cash payment status
-invitePromoteRouter.post('/admin/cash-rewards/:id/status', async (req: AuthenticatedRequest, res: Response) => {
+invitePromoteRouter.post('/admin/cash-rewards/:id/status', adminAuth, async (req: AdminAuthenticatedRequest, res: Response) => {
   try {
     if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
 
@@ -255,7 +252,7 @@ invitePromoteRouter.post('/admin/cash-rewards/:id/status', async (req: Authentic
 });
 
 // 10. Get all referrals for admin
-invitePromoteRouter.get('/admin/referrals', async (req: AuthenticatedRequest, res: Response) => {
+invitePromoteRouter.get('/admin/referrals', adminAuth, async (req: AdminAuthenticatedRequest, res: Response) => {
   try {
     if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
 
@@ -266,6 +263,73 @@ invitePromoteRouter.get('/admin/referrals', async (req: AuthenticatedRequest, re
   } catch (error) {
     console.error('Error fetching admin referrals:', error);
     res.status(500).json({ error: 'Failed to fetch referrals' });
+  }
+});
+
+// 11. Get Growth Dashboard Stats
+invitePromoteRouter.get('/admin/dashboard', adminAuth, async (req: AdminAuthenticatedRequest, res: Response) => {
+  try {
+    if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+
+    // Fetch counts from various collections
+    const [
+      referralsSnapshot,
+      promotionsSnapshot,
+      cashRewardsSnapshot
+    ] = await Promise.all([
+      db.collection('referrals').get(),
+      db.collection('promotions').get(),
+      db.collection('cashRewards').get()
+    ]);
+
+    const referrals = referralsSnapshot.docs.map((d: any) => d.data());
+    const promotions = promotionsSnapshot.docs.map((d: any) => d.data());
+    const cashRewards = cashRewardsSnapshot.docs.map((d: any) => d.data());
+
+    const totalReferrals = referrals.length;
+    const completedReferrals = referrals.filter((r: any) => r.status === 'completed').length;
+    const pendingReferrals = referrals.filter((r: any) => r.status === 'pending').length;
+
+    const totalPromotions = promotions.length;
+    const pendingPromotions = promotions.filter((p: any) => p.status === 'pending').length;
+    const approvedPromotions = promotions.filter((p: any) => p.status === 'approved').length;
+
+    const pendingCashPayments = cashRewards.filter((c: any) => c.status === 'pending').length;
+    const completedCashPayments = cashRewards.filter((c: any) => c.status === 'paid').length;
+
+    // Approximated coins issued
+    const totalCoinsIssued = completedReferrals * 1500; 
+
+    res.json({
+      totalReferrals,
+      completedReferrals,
+      pendingReferrals,
+      totalPromotions,
+      pendingPromotions,
+      approvedPromotions,
+      pendingCashPayments,
+      completedCashPayments,
+      totalCoinsIssued,
+      recentActivity: [] // placeholder
+    });
+  } catch (error) {
+    console.error('Error fetching dashboard stats:', error);
+    res.status(500).json({ error: 'Failed to fetch dashboard stats' });
+  }
+});
+
+// 12. Get Audit Logs
+invitePromoteRouter.get('/admin/audit-logs', adminAuth, async (req: AdminAuthenticatedRequest, res: Response) => {
+  try {
+    if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+
+    const snapshot = await db.collection('auditLogs').orderBy('createdAt', 'desc').limit(50).get();
+    const logs = snapshot.docs.map((d: any) => d.data());
+
+    res.json({ logs });
+  } catch (error) {
+    console.error('Error fetching audit logs:', error);
+    res.status(500).json({ error: 'Failed to fetch audit logs' });
   }
 });
 

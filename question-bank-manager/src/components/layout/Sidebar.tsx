@@ -8,7 +8,14 @@ import {
   Layers,
   Settings,
   Server,
-  Zap
+  Zap,
+  TrendingUp,
+  Users,
+  Video,
+  Gift,
+  Banknote,
+  Settings2,
+  ClipboardList
 } from 'lucide-react';
 import { isSupabaseConfigured } from '../../lib/supabase';
 
@@ -25,6 +32,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     { to: '/import-csv', label: 'Import CSV', icon: FileUp, badge: 'Batch' },
     { to: '/subjects', label: 'Subjects', icon: Layers },
     { to: '/settings', label: 'Settings & API', icon: Settings }
+  ];
+
+  const growthItems = [
+    { to: '/growth/dashboard', label: 'Growth Dashboard', icon: TrendingUp },
+    { to: '/growth/referrals', label: 'Referral Management', icon: Users },
+    { to: '/growth/influencers', label: 'Influencer Submissions', icon: Video },
+    { to: '/growth/rewards', label: 'Gift & Reward Management', icon: Gift },
+    { to: '/growth/cash', label: 'Pending Cash Payments', icon: Banknote },
+    { to: '/growth/settings', label: 'Campaign Settings', icon: Settings2 },
+    { to: '/growth/audit', label: 'Growth Audit Logs', icon: ClipboardList }
   ];
 
   return (
@@ -87,6 +104,32 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                     {item.badge}
                   </span>
                 )}
+              </NavLink>
+            );
+          })}
+
+          <div className="px-3 pt-4 pb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+            GROWTH & REWARDS
+          </div>
+          {growthItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                onClick={() => onClose()}
+                className={({ isActive }) =>
+                  `flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                    isActive
+                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 font-semibold shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800/60'
+                  }`
+                }
+              >
+                <div className="flex items-center gap-3">
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <span>{item.label}</span>
+                </div>
               </NavLink>
             );
           })}
