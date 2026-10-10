@@ -51,8 +51,22 @@ export const EditQuestionModal: React.FC<EditQuestionModalProps> = ({
     }
   }, [question]);
 
+  const [availableTopics, setAvailableTopics] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (formData.subject) {
+      questionService.getTopics(formData.subject).then(setAvailableTopics).catch(() => setAvailableTopics([]));
+    } else {
+      setAvailableTopics([]);
+    }
+  }, [formData.subject]);
+
   const handleChange = (field: keyof QuestionUpdate, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    setFormData((prev) => ({ 
+      ...prev, 
+      [field]: value,
+      ...(field === 'subject' && { topic: '' }) // Reset topic if subject changes
+    }));
     if (errors[field]) {
       setErrors((prev) => {
         const next = { ...prev };
@@ -171,11 +185,15 @@ export const EditQuestionModal: React.FC<EditQuestionModalProps> = ({
             </label>
             <input
               type="text"
+              list="edit-topic-options"
               value={formData.topic || ''}
               onChange={(e) => handleChange('topic', e.target.value)}
               placeholder="e.g. Dynamic Programming, SQL Joins"
               className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
             />
+            <datalist id="edit-topic-options">
+              {availableTopics.map(t => <option key={t} value={t} />)}
+            </datalist>
           </div>
 
           <div>

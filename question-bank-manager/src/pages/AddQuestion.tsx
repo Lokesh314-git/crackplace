@@ -56,6 +56,8 @@ export const AddQuestion: React.FC = () => {
     });
   }, []);
 
+  const [availableTopics, setAvailableTopics] = useState<string[]>([]);
+
   const handleSubjectChange = (subjectSlug: string, currentSubjects = subjects) => {
     const sub = currentSubjects.find((s) => s.slug === subjectSlug) || DEFAULT_SUBJECTS.find((s) => s.slug === subjectSlug);
     const prefix = sub?.code_prefix || 'Q';
@@ -65,8 +67,11 @@ export const AddQuestion: React.FC = () => {
     setFormData((prev) => ({
       ...prev,
       subject: subjectSlug,
-      question_id: generatedId
+      question_id: generatedId,
+      topic: '' // reset topic when subject changes
     }));
+    
+    questionService.getTopics(subjectSlug).then(setAvailableTopics).catch(() => setAvailableTopics([]));
   };
 
   const handleChange = (field: keyof QuestionInsert, value: any) => {
@@ -262,11 +267,15 @@ export const AddQuestion: React.FC = () => {
               </label>
               <input
                 type="text"
+                list="topic-options"
                 value={formData.topic || ''}
                 onChange={(e) => handleChange('topic', e.target.value)}
                 placeholder="e.g. Time & Work, Graphs, Normalization"
                 className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
               />
+              <datalist id="topic-options">
+                {availableTopics.map(t => <option key={t} value={t} />)}
+              </datalist>
             </div>
 
             {/* Subtopic */}

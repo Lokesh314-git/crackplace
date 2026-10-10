@@ -67,6 +67,15 @@ export const Questions: React.FC = () => {
     }
   }, [filters]);
 
+  const [availableTopics, setAvailableTopics] = useState<string[]>([]);
+  useEffect(() => {
+    if (filters.subject && filters.subject !== 'all') {
+      questionService.getTopics(filters.subject).then(setAvailableTopics).catch(() => setAvailableTopics([]));
+    } else {
+      setAvailableTopics([]);
+    }
+  }, [filters.subject]);
+
   useEffect(() => {
     fetchQuestions();
   }, [fetchQuestions]);
@@ -154,7 +163,7 @@ export const Questions: React.FC = () => {
 
       {/* Search & Filter Card */}
       <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
           {/* Search Box */}
           <div className="lg:col-span-2 relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
@@ -179,13 +188,33 @@ export const Questions: React.FC = () => {
           <div>
             <select
               value={filters.subject || 'all'}
-              onChange={(e) => handleFilterChange('subject', e.target.value)}
+              onChange={(e) => {
+                handleFilterChange('subject', e.target.value);
+                handleFilterChange('topic', 'all'); // reset topic when subject changes
+              }}
               className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
             >
               <option value="all">All Subjects</option>
               {allSubjects.map((s) => (
                 <option key={s.slug} value={s.slug}>
                   {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Topic Filter */}
+          <div>
+            <select
+              value={filters.topic || 'all'}
+              onChange={(e) => handleFilterChange('topic', e.target.value)}
+              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              disabled={!filters.subject || filters.subject === 'all'}
+            >
+              <option value="all">All Topics</option>
+              {availableTopics.map((t) => (
+                <option key={t} value={t}>
+                  {t}
                 </option>
               ))}
             </select>

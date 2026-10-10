@@ -8,12 +8,8 @@ import { validateCSVRow } from '../utils/validation';
 import { normalizeText } from '../utils/normalization';
 
 export const CSV_EXPECTED_HEADERS = [
-  'id',
   'subject',
   'topic',
-  'subtopic',
-  'difficulty',
-  'question_type',
   'question',
   'option_a',
   'option_b',
@@ -21,7 +17,10 @@ export const CSV_EXPECTED_HEADERS = [
   'option_d',
   'correct_answer',
   'explanation',
-  'source'
+  'difficulty',
+  'marks',
+  'negative_marks',
+  'tags'
 ];
 
 export const csvService = {
@@ -30,6 +29,8 @@ export const csvService = {
    */
   async parseAndValidate(
     file: File,
+    defaultSubject?: string,
+    defaultTopic?: string,
     onProgress?: (progress: number) => void
   ): Promise<CSVValidationSummary> {
     return new Promise((resolve, reject) => {
@@ -43,8 +44,12 @@ export const csvService = {
             const rows = results.data;
 
             // Check missing mandatory headers
-            const requiredHeaders = ['subject', 'difficulty', 'question_type', 'question'];
+            // We require either defaultSubject or subject in CSV
+            const requiredHeaders = ['question', 'difficulty'];
             const missingRequiredHeaders = requiredHeaders.filter((req) => !rawHeaders.includes(req));
+            if (!defaultSubject && !rawHeaders.includes('subject')) {
+                missingRequiredHeaders.push('subject');
+            }
 
             const validatedRows: ValidatedCSVRow[] = [];
             const seenQuestionIds = new Set<string>();
@@ -60,7 +65,17 @@ export const csvService = {
             for (let i = 0; i < total; i++) {
               const rawRow = rows[i];
               // Validate schema & values
-              const validation = validateCSVRow(rawRow, i + 1);
+              const validation = validateCSVRow(
+                rawRow, 
+                i + 1, 
+                new Set(), 
+                seenQuestionIds, 
+                new Set(), 
+                seenQuestionTexts, 
+                undefined,
+                defaultSubject,
+                defaultTopic
+              );
 
               // Check for intra-CSV duplicates
               const qId = (rawRow.id || rawRow.question_id || '').trim().toUpperCase();
@@ -131,12 +146,8 @@ export const csvService = {
   downloadSampleCSV() {
     const sampleRows = [
       {
-        id: 'QA0001',
         subject: 'quantitative_aptitude',
         topic: 'Percentages',
-        subtopic: 'Basic Percentage',
-        difficulty: 'Easy',
-        question_type: 'MCQ',
         question: 'What is 20% of 100?',
         option_a: '10',
         option_b: '20',
@@ -144,15 +155,14 @@ export const csvService = {
         option_d: '40',
         correct_answer: 'B',
         explanation: '20% of 100 = (20/100) * 100 = 20.',
-        source: 'Campus Assessment 2025'
+        difficulty: 'Easy',
+        marks: '1',
+        negative_marks: '0',
+        tags: 'basic,math'
       },
       {
-        id: 'DSA0001',
         subject: 'dsa',
         topic: 'Arrays',
-        subtopic: 'Time Complexity',
-        difficulty: 'Medium',
-        question_type: 'MCQ',
         question: 'What is the average time complexity of searching in a Hash Table with good hash distribution?',
         option_a: 'O(1)',
         option_b: 'O(log N)',
@@ -160,23 +170,10 @@ export const csvService = {
         option_d: 'O(N^2)',
         correct_answer: 'A',
         explanation: 'Direct key hashing enables constant average time lookup O(1).',
-        source: 'Technical Round'
-      },
-      {
-        id: 'HR0001',
-        subject: 'hr_behavioral',
-        topic: 'Leadership',
-        subtopic: 'Teamwork',
         difficulty: 'Medium',
-        question_type: 'INTERVIEW',
-        question: 'Tell me about a time you handled a tight project deadline with unexpected roadblocks.',
-        option_a: '',
-        option_b: '',
-        option_c: '',
-        option_d: '',
-        correct_answer: '',
-        explanation: 'Evaluate candidate on prioritization, communication, composure under pressure, and solution-oriented mindset.',
-        source: 'HR Round'
+        marks: '2',
+        negative_marks: '0.5',
+        tags: 'data_structures,hashing'
       }
     ];
 
@@ -188,13 +185,9 @@ export const csvService = {
    * Export an array of Questions to CSV
    */
   exportQuestionsToCSV(questions: Question[], filename = 'crackplace_questions_export.csv') {
-    const mapped = questions.map((q) => ({
-      id: q.question_id,
+    const mapped = questions.map((q: any) => ({
       subject: q.subject,
       topic: q.topic || '',
-      subtopic: q.subtopic || '',
-      difficulty: q.difficulty,
-      question_type: q.question_type,
       question: q.question,
       option_a: q.option_a || '',
       option_b: q.option_b || '',
@@ -202,7 +195,10 @@ export const csvService = {
       option_d: q.option_d || '',
       correct_answer: q.correct_answer || '',
       explanation: q.explanation || '',
-      source: q.source || ''
+      difficulty: q.difficulty,
+      marks: q.marks || '',
+      negative_marks: q.negative_marks || '',
+      tags: q.tags || ''
     }));
 
     const csv = Papa.unparse(mapped, { columns: CSV_EXPECTED_HEADERS });

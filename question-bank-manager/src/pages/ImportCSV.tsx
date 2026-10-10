@@ -12,7 +12,7 @@ import {
   Check,
   UploadCloud
 } from 'lucide-react';
-import { csvService } from '../services/csvService';
+import { csvService, CSV_EXPECTED_HEADERS } from '../services/csvService';
 import { questionService } from '../services/questionService';
 import {
   CSVValidationSummary,
@@ -41,6 +41,23 @@ export const ImportCSV: React.FC = () => {
   });
 
   const [dragActive, setDragActive] = useState(false);
+  const [subjects, setSubjects] = React.useState<any[]>([]);
+  const [availableTopics, setAvailableTopics] = useState<string[]>([]);
+  const [defaultSubject, setDefaultSubject] = useState('');
+  const [defaultTopic, setDefaultTopic] = useState('');
+
+  React.useEffect(() => {
+    questionService.getSubjects().then((subs) => setSubjects(subs));
+  }, []);
+
+  React.useEffect(() => {
+    if (defaultSubject) {
+      questionService.getTopics(defaultSubject).then(setAvailableTopics).catch(() => setAvailableTopics([]));
+    } else {
+      setAvailableTopics([]);
+    }
+    setDefaultTopic('');
+  }, [defaultSubject]);
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -77,7 +94,7 @@ export const ImportCSV: React.FC = () => {
     setParsing(true);
 
     try {
-      const res = await csvService.parseAndValidate(selectedFile);
+      const res = await csvService.parseAndValidate(selectedFile, defaultSubject, defaultTopic);
       setSummary(res);
     } catch (err: any) {
       alert(`CSV parsing failed: ${err.message}`);
@@ -181,6 +198,48 @@ export const ImportCSV: React.FC = () => {
 
       {/* Upload Zone */}
       {!summary && !parsing && (
+        <div className="space-y-6">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 sm:p-6 shadow-sm space-y-4">
+            <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Optional: Set Default Subject & Topic</h3>
+            <p className="text-xs text-slate-500">
+              Questions in the CSV will inherit these selections unless the row explicitly provides a different subject or topic.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Default Subject
+                </label>
+                <select
+                  value={defaultSubject}
+                  onChange={(e) => setDefaultSubject(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+                >
+                  <option value="">-- None (Read from CSV) --</option>
+                  {subjects.map((sub: any) => (
+                    <option key={sub.slug} value={sub.slug}>
+                      {sub.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Default Topic
+                </label>
+                <input
+                  type="text"
+                  list="import-topic-options"
+                  value={defaultTopic}
+                  onChange={(e) => setDefaultTopic(e.target.value)}
+                  placeholder="e.g. Arrays, Strings"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors placeholder:text-slate-400"
+                />
+                <datalist id="import-topic-options">
+                  {availableTopics.map(t => <option key={t} value={t} />)}
+                </datalist>
+              </div>
+            </div>
+          </div>
         <div
           onDragEnter={handleDrag}
           onDragOver={handleDrag}
@@ -224,9 +283,10 @@ export const ImportCSV: React.FC = () => {
             </button>
 
             <div className="pt-4 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-400">
-              Columns: <code className="text-indigo-600 dark:text-indigo-400">id, subject, topic, subtopic, difficulty, question_type, question, option_a, option_b, option_c, option_d, correct_answer, explanation, source</code>
+              Columns: <code className="text-indigo-600 dark:text-indigo-400">{CSV_EXPECTED_HEADERS.join(', ')}</code>
             </div>
           </div>
+        </div>
         </div>
       )}
 

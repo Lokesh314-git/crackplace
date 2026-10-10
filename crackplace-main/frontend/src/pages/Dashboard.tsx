@@ -1,12 +1,12 @@
 import React from 'react';
 import { useAuthStore } from '../store/authStore';
-import { 
-  FaGraduationCap, 
-  FaBriefcase, 
-  FaGamepad, 
-  FaCode, 
-  FaFire, 
-  FaCoins, 
+import {
+  FaGraduationCap,
+  FaBriefcase,
+  FaGamepad,
+  FaCode,
+  FaFire,
+  FaCoins,
   FaCrown,
   FaArrowRight,
   FaCircleQuestion,
@@ -88,11 +88,8 @@ export const Dashboard: React.FC = () => {
             </span>
           </div>
           <h1 className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">
-            Welcome back, {userProfile.displayName || 'Candidate'}
+            Welcome!, {userProfile.displayName || 'Candidate'}
           </h1>
-          <p className="text-xs md:text-sm text-slate-600 max-w-xl">
-            Continue your daily preparation path to target <strong className="text-slate-900 font-semibold">{userProfile.dreamCompany || 'Tier-1 Tech Companies'}</strong>.
-          </p>
         </div>
 
         {/* Readiness Quotient Widget */}

@@ -76,14 +76,17 @@ export function validateCSVRow(
   seenIdsInCsv: Set<string> = new Set(),
   knownTextsInDb: Set<string> = new Set(),
   seenTextsInCsv: Set<string> = new Set(),
-  validSubjectSlugs?: Set<string>
+  validSubjectSlugs?: Set<string>,
+  defaultSubject?: string,
+  defaultTopic?: string
 ): ValidatedCSVRow {
   const errors: string[] = [];
   const warnings: string[] = [];
 
   const rawQuestionText = normalizeText(raw.question || '');
   const rawQuestionId = normalizeText(raw.question_id || raw.id || '').toUpperCase();
-  const rawSubject = normalizeText(raw.subject || '').toLowerCase().replace(/\s+/g, '_');
+  const rawSubject = normalizeText(raw.subject || defaultSubject || '').toLowerCase().replace(/\s+/g, '_');
+  const rawTopic = normalizeText(raw.topic || defaultTopic || '');
   const rawDifficulty = normalizeText(raw.difficulty || '');
   const rawType = normalizeText(raw.question_type || '').toUpperCase() || 'MCQ';
 
@@ -179,6 +182,7 @@ export function validateCSVRow(
       ...raw,
       question_id: rawQuestionId,
       subject: rawSubject,
+      topic: rawTopic,
       difficulty: formattedDiff as any,
       question_type: formattedType as any,
       correct_answer: answer
