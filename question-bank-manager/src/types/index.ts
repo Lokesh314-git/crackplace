@@ -55,6 +55,7 @@ export interface Subject {
   display_order: number;
   is_active: boolean;
   question_count?: number;
+  topic_count?: number;
   created_at?: string;
   updated_at?: string;
 }

@@ -79,8 +79,8 @@ export const Subjects: React.FC = () => {
               <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-800/50 text-slate-500 uppercase font-semibold text-[10px] tracking-wider">
                 <th className="py-3 px-4">Subject Name</th>
                 <th className="py-3 px-4">Identifier (Slug)</th>
-                <th className="py-3 px-4">ID Prefix</th>
-                <th className="py-3 px-4 text-right">Question Count</th>
+                <th className="py-3 px-4 text-right">Topics</th>
+                <th className="py-3 px-4 text-right">Questions</th>
                 <th className="py-3 px-4">Status</th>
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
@@ -111,8 +111,8 @@ export const Subjects: React.FC = () => {
                       {sub.slug}
                     </span>
                   </td>
-                  <td className="py-3.5 px-4 font-mono font-bold text-indigo-600 dark:text-indigo-400">
-                    {sub.code_prefix}
+                  <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900 dark:text-white">
+                    {(sub.topic_count || 0).toLocaleString()}
                   </td>
                   <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900 dark:text-white">
                     {(sub.question_count || 0).toLocaleString()}
@@ -124,10 +124,10 @@ export const Subjects: React.FC = () => {
                   </td>
                   <td className="py-3.5 px-4 text-right whitespace-nowrap">
                     <Link
-                      to={`/questions?subject=${sub.slug}`}
+                      to={`/subjects/${sub.slug}`}
                       className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 rounded-md transition-colors"
                     >
-                      <span>View Questions</span>
+                      <span>View Topics</span>
                       <ArrowRight className="w-3.5 h-3.5" />
                     </Link>
                   </td>

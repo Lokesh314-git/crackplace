@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { Link, useParams } from 'react-router-dom';
 import {
   Search,
   Download,
@@ -9,7 +10,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Database,
-  X
+  X,
+  Plus
 } from 'lucide-react';
 import { questionService } from '../services/questionService';
 import { csvService } from '../services/csvService';
@@ -21,6 +23,8 @@ import { DeleteConfirmModal } from '../components/modals/DeleteConfirmModal';
 import { DEFAULT_SUBJECTS, getSubjectDetails } from '../constants/subjects';
 
 export const Questions: React.FC = () => {
+  const { subjectSlug, topicName } = useParams<{ subjectSlug?: string, topicName?: string }>();
+  
   const [questions, setQuestions] = useState<Question[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -31,13 +35,17 @@ export const Questions: React.FC = () => {
   const [filters, setFilters] = useState<QuestionFilters>({
     page: 1,
     pageSize: 20,
-    subject: 'all',
+    subject: subjectSlug || 'all',
+    topic: topicName || 'all',
     difficulty: 'all',
     question_type: 'all',
     search: '',
     sortBy: 'created_at',
     sortOrder: 'desc'
   });
+
+  const isTopicContext = Boolean(subjectSlug && topicName);
+  const [subjectName, setSubjectName] = useState<string>('');
 
   const [searchInput, setSearchInput] = useState('');
 
@@ -49,8 +57,15 @@ export const Questions: React.FC = () => {
 
   // Load Subjects on mount
   useEffect(() => {
-    questionService.getSubjects().then((subs) => setSubjects(subs));
-  }, []);
+    questionService.getSubjects().then((subs) => {
+      setSubjects(subs);
+      if (subjectSlug) {
+        const sub = subs.find(s => s.slug === subjectSlug);
+        if (sub) setSubjectName(sub.name);
+        else setSubjectName(subjectSlug);
+      }
+    });
+  }, [subjectSlug]);
 
   // Fetch Questions from Supabase
   const fetchQuestions = useCallback(async () => {
@@ -131,33 +146,69 @@ export const Questions: React.FC = () => {
   return (
     <div className="space-y-5 pb-12">
       {/* Title & Actions Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
-            Question Bank Repository
-          </h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Manage, filter, search, and export questions stored in Supabase PostgreSQL ({totalCount.toLocaleString()} total)
-          </p>
-        </div>
+      <div className="flex flex-col gap-3">
+        {isTopicContext && (
+          <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
+            <Link to="/subjects" className="hover:text-indigo-600 transition-colors">Subjects</Link>
+            <span>/</span>
+            <Link to={`/subjects/${subjectSlug}`} className="hover:text-indigo-600 transition-colors">{subjectName}</Link>
+            <span>/</span>
+            <span className="text-slate-900 dark:text-slate-200">{topicName}</span>
+          </div>
+        )}
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => fetchQuestions()}
-            className="p-2 rounded-lg text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-xs"
-            title="Reload from Supabase"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
+              {isTopicContext ? `${topicName} Questions` : 'Question Bank Repository'}
+            </h1>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              {isTopicContext 
+                ? `Manage questions for ${subjectName} > ${topicName} (${totalCount.toLocaleString()} total)`
+                : `Manage, filter, search, and export questions stored in Supabase PostgreSQL (${totalCount.toLocaleString()} total)`
+              }
+            </p>
+          </div>
 
-          <button
-            onClick={handleExport}
-            disabled={exporting || totalCount === 0}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-xs disabled:opacity-50"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>{exporting ? 'Exporting...' : 'Export Filtered CSV'}</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => fetchQuestions()}
+              className="p-2 rounded-lg text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-xs"
+              title="Reload from Supabase"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+
+            {isTopicContext && (
+              <>
+                <Link
+                  to={`/add-question?subject=${subjectSlug}&topic=${encodeURIComponent(topicName || '')}&returnTo=/subjects/${subjectSlug}/topics/${encodeURIComponent(topicName || '')}`}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 transition-colors shadow-xs shadow-indigo-600/20"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Manually</span>
+                </Link>
+                <Link
+                  to={`/import-csv?subject=${subjectSlug}&topic=${encodeURIComponent(topicName || '')}&returnTo=/subjects/${subjectSlug}/topics/${encodeURIComponent(topicName || '')}`}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-xs"
+                >
+                  <Database className="w-3.5 h-3.5 text-indigo-500" />
+                  <span>Bulk Upload CSV</span>
+                </Link>
+              </>
+            )}
+
+            {!isTopicContext && (
+              <button
+                onClick={handleExport}
+                disabled={exporting || totalCount === 0}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-xs disabled:opacity-50"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>{exporting ? 'Exporting...' : 'Export Filtered CSV'}</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -185,40 +236,44 @@ export const Questions: React.FC = () => {
           </div>
 
           {/* Subject Filter */}
-          <div>
-            <select
-              value={filters.subject || 'all'}
-              onChange={(e) => {
-                handleFilterChange('subject', e.target.value);
-                handleFilterChange('topic', 'all'); // reset topic when subject changes
-              }}
-              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-            >
-              <option value="all">All Subjects</option>
-              {allSubjects.map((s) => (
-                <option key={s.slug} value={s.slug}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          {!isTopicContext && (
+            <div>
+              <select
+                value={filters.subject || 'all'}
+                onChange={(e) => {
+                  handleFilterChange('subject', e.target.value);
+                  handleFilterChange('topic', 'all'); // reset topic when subject changes
+                }}
+                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              >
+                <option value="all">All Subjects</option>
+                {allSubjects.map((s) => (
+                  <option key={s.slug} value={s.slug}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Topic Filter */}
-          <div>
-            <select
-              value={filters.topic || 'all'}
-              onChange={(e) => handleFilterChange('topic', e.target.value)}
-              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-              disabled={!filters.subject || filters.subject === 'all'}
-            >
-              <option value="all">All Topics</option>
-              {availableTopics.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </div>
+          {!isTopicContext && (
+            <div>
+              <select
+                value={filters.topic || 'all'}
+                onChange={(e) => handleFilterChange('topic', e.target.value)}
+                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                disabled={!filters.subject || filters.subject === 'all'}
+              >
+                <option value="all">All Topics</option>
+                {availableTopics.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Difficulty Filter */}
           <div>

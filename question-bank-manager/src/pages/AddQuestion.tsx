@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Save,
   CheckCircle2,
@@ -23,6 +23,11 @@ import { DEFAULT_SUBJECTS } from '../constants/subjects';
 
 export const AddQuestion: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const returnTo = searchParams.get('returnTo');
+  const lockedSubject = searchParams.get('subject');
+  const lockedTopic = searchParams.get('topic');
+
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [saving, setSaving] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -30,8 +35,8 @@ export const AddQuestion: React.FC = () => {
 
   const [formData, setFormData] = useState<QuestionInsert>({
     question_id: 'QA0001',
-    subject: 'quantitative_aptitude',
-    topic: '',
+    subject: lockedSubject || 'quantitative_aptitude',
+    topic: lockedTopic || '',
     subtopic: '',
     difficulty: 'Easy',
     question_type: 'MCQ',
@@ -46,19 +51,20 @@ export const AddQuestion: React.FC = () => {
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [availableTopics, setAvailableTopics] = useState<string[]>([]);
 
   useEffect(() => {
     questionService.getSubjects().then((subs) => {
       setSubjects(subs);
-      if (subs.length > 0) {
+      if (lockedSubject) {
+        handleSubjectChange(lockedSubject, subs, true);
+      } else if (subs.length > 0) {
         handleSubjectChange(subs[0].slug, subs);
       }
     });
-  }, []);
+  }, [lockedSubject]);
 
-  const [availableTopics, setAvailableTopics] = useState<string[]>([]);
-
-  const handleSubjectChange = (subjectSlug: string, currentSubjects = subjects) => {
+  const handleSubjectChange = (subjectSlug: string, currentSubjects = subjects, preserveTopic = false) => {
     const sub = currentSubjects.find((s) => s.slug === subjectSlug) || DEFAULT_SUBJECTS.find((s) => s.slug === subjectSlug);
     const prefix = sub?.code_prefix || 'Q';
     const randomNum = Math.floor(1000 + Math.random() * 9000);
@@ -68,7 +74,7 @@ export const AddQuestion: React.FC = () => {
       ...prev,
       subject: subjectSlug,
       question_id: generatedId,
-      topic: '' // reset topic when subject changes
+      topic: preserveTopic ? prev.topic : '' // reset topic when subject changes manually
     }));
     
     questionService.getTopics(subjectSlug).then(setAvailableTopics).catch(() => setAvailableTopics([]));
@@ -106,6 +112,12 @@ export const AddQuestion: React.FC = () => {
     try {
       setSaving(true);
       await questionService.createQuestion(formData);
+      
+      if (returnTo) {
+        navigate(returnTo);
+        return;
+      }
+
       setSuccessMessage(`Question "${formData.question_id}" added successfully into Supabase.`);
 
       // Prepare form for next entry with fresh generated ID
@@ -140,10 +152,10 @@ export const AddQuestion: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <button
-            onClick={() => navigate('/questions')}
+            onClick={() => navigate(returnTo || '/questions')}
             className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 mb-2 transition-colors"
           >
-            <ArrowLeft className="w-3.5 h-3.5" /> Back to Question Bank
+            <ArrowLeft className="w-3.5 h-3.5" /> Back to {returnTo ? 'Questions' : 'Question Bank'}
           </button>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
             Manual Question Entry
@@ -201,7 +213,8 @@ export const AddQuestion: React.FC = () => {
               <select
                 value={formData.subject}
                 onChange={(e) => handleSubjectChange(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                disabled={Boolean(lockedSubject)}
+                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none disabled:bg-slate-100 dark:disabled:bg-slate-800/50 disabled:text-slate-500"
               >
                 {allSubjects.map((s) => (
                   <option key={s.slug} value={s.slug}>
@@ -270,8 +283,9 @@ export const AddQuestion: React.FC = () => {
                 list="topic-options"
                 value={formData.topic || ''}
                 onChange={(e) => handleChange('topic', e.target.value)}
+                disabled={Boolean(lockedTopic)}
                 placeholder="e.g. Time & Work, Graphs, Normalization"
-                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none disabled:bg-slate-100 dark:disabled:bg-slate-800/50 disabled:text-slate-500"
               />
               <datalist id="topic-options">
                 {availableTopics.map(t => <option key={t} value={t} />)}

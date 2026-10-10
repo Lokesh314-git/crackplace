@@ -224,7 +224,17 @@ export class AdminQuestionService {
     const mapped: any[] = [];
     for (const sub of subjects || []) {
       const { count } = await supabase.from('questions').select('*', { count: 'exact', head: true }).eq('subject', sub.slug);
-      mapped.push({ ...sub, question_count: count || 0 });
+      
+      const { data: topicsData } = await supabase
+        .from('questions')
+        .select('topic')
+        .eq('subject', sub.slug)
+        .not('topic', 'is', null)
+        .neq('topic', '');
+        
+      const uniqueTopics = new Set((topicsData || []).map((q: any) => q.topic)).size;
+
+      mapped.push({ ...sub, question_count: count || 0, topic_count: uniqueTopics });
     }
     return mapped;
   }
@@ -244,6 +254,31 @@ export class AdminQuestionService {
     
     const uniqueTopics = Array.from(new Set(data.map((q: any) => q.topic))).sort();
     return uniqueTopics;
+  }
+
+  static async getTopicStats(subjectSlug: string) {
+    const { data, error } = await supabase
+      .from('questions')
+      .select('topic')
+      .eq('subject', subjectSlug)
+      .not('topic', 'is', null)
+      .neq('topic', '');
+      
+    if (error) {
+       console.error(`Failed to fetch topic stats: ${error.message}`);
+       return [];
+    }
+    
+    const counts: Record<string, number> = {};
+    for (const q of data) {
+      if (q.topic) {
+        counts[q.topic] = (counts[q.topic] || 0) + 1;
+      }
+    }
+    
+    return Object.entries(counts)
+      .map(([name, count]) => ({ name, question_count: count }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }
 
   static async createSubject(subject: any) {

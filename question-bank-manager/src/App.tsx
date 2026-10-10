@@ -7,6 +7,7 @@ import { Questions } from './pages/Questions';
 import { AddQuestion } from './pages/AddQuestion';
 import { ImportCSV } from './pages/ImportCSV';
 import { Subjects } from './pages/Subjects';
+import { TopicsList } from './pages/TopicsList';
 import { Settings } from './pages/Settings';
 import { Login } from './pages/Login';
 import { Users } from './pages/Users';
@@ -61,6 +62,8 @@ export const App: React.FC = () => {
           <Route path="add-question" element={<AddQuestion />} />
           <Route path="import-csv" element={<ImportCSV />} />
           <Route path="subjects" element={<Subjects />} />
+          <Route path="subjects/:subjectSlug" element={<TopicsList />} />
+          <Route path="subjects/:subjectSlug/topics/:topicName" element={<Questions />} />
           <Route path="users" element={<Users />} />
           <Route path="settings" element={<Settings />} />
           

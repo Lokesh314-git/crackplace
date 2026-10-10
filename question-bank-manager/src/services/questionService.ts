@@ -135,6 +135,10 @@ export const questionService = {
     return fetchWithAuth(`/api/admin/questions/subjects/${subjectSlug}/topics`);
   },
 
+  async getTopicStats(subjectSlug: string): Promise<{ name: string; question_count: number }[]> {
+    return fetchWithAuth(`/api/admin/questions/subjects/${subjectSlug}/topic-stats`);
+  },
+
   async createSubject(subject: SubjectInsert): Promise<Subject> {
     return fetchWithAuth(`/api/admin/questions/subjects`, {
       method: 'POST',

@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   FileUp,
   Download,
@@ -23,6 +23,11 @@ import { Badge } from '../components/ui/Badge';
 
 export const ImportCSV: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const returnTo = searchParams.get('returnTo');
+  const lockedSubject = searchParams.get('subject');
+  const lockedTopic = searchParams.get('topic');
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [parsing, setParsing] = useState(false);
@@ -43,8 +48,8 @@ export const ImportCSV: React.FC = () => {
   const [dragActive, setDragActive] = useState(false);
   const [subjects, setSubjects] = React.useState<any[]>([]);
   const [availableTopics, setAvailableTopics] = useState<string[]>([]);
-  const [defaultSubject, setDefaultSubject] = useState('');
-  const [defaultTopic, setDefaultTopic] = useState('');
+  const [defaultSubject, setDefaultSubject] = useState(lockedSubject || '');
+  const [defaultTopic, setDefaultTopic] = useState(lockedTopic || '');
 
   React.useEffect(() => {
     questionService.getSubjects().then((subs) => setSubjects(subs));
@@ -212,7 +217,8 @@ export const ImportCSV: React.FC = () => {
                 <select
                   value={defaultSubject}
                   onChange={(e) => setDefaultSubject(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+                  disabled={Boolean(lockedSubject)}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors disabled:bg-slate-100 dark:disabled:bg-slate-800/50 disabled:text-slate-500"
                 >
                   <option value="">-- None (Read from CSV) --</option>
                   {subjects.map((sub: any) => (
@@ -231,8 +237,9 @@ export const ImportCSV: React.FC = () => {
                   list="import-topic-options"
                   value={defaultTopic}
                   onChange={(e) => setDefaultTopic(e.target.value)}
+                  disabled={Boolean(lockedTopic)}
                   placeholder="e.g. Arrays, Strings"
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors placeholder:text-slate-400"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors placeholder:text-slate-400 disabled:bg-slate-100 dark:disabled:bg-slate-800/50 disabled:text-slate-500"
                 />
                 <datalist id="import-topic-options">
                   {availableTopics.map(t => <option key={t} value={t} />)}
@@ -613,10 +620,10 @@ export const ImportCSV: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={() => navigate('/questions')}
+                onClick={() => navigate(returnTo || '/questions')}
                 className="inline-flex items-center gap-2 px-5 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 rounded-lg shadow-xs transition-colors"
               >
-                <span>View Questions in Bank</span>
+                <span>{returnTo ? 'Return to Topic' : 'View Questions in Bank'}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>

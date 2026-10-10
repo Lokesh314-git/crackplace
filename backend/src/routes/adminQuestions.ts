@@ -54,6 +54,15 @@ adminQuestionsRouter.get('/subjects/:slug/topics', async (req: AdminAuthenticate
   }
 });
 
+adminQuestionsRouter.get('/subjects/:slug/topic-stats', async (req: AdminAuthenticatedRequest, res: Response) => {
+  try {
+    const stats = await AdminQuestionService.getTopicStats(req.params.slug);
+    res.json(stats);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 adminQuestionsRouter.post('/subjects', async (req: AdminAuthenticatedRequest, res: Response) => {
   try {
     const subject = await AdminQuestionService.createSubject(req.body);
