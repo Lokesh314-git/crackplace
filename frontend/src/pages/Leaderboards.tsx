@@ -65,7 +65,10 @@ export const Leaderboards: React.FC = () => {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to load leaderboard data.');
+        const errorMsg = typeof data.error === 'object' && data.error !== null 
+          ? (data.error.message || JSON.stringify(data.error)) 
+          : data.error;
+        throw new Error(errorMsg || 'Failed to load leaderboard data.');
       }
 
       const userList = Array.isArray(data) ? data : (data.users || []);
