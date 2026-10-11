@@ -38,12 +38,12 @@ adminUsersRouter.get('/', adminAuth, async (req: AdminAuthenticatedRequest, res:
     }
 
     const { page = '1', limit = '50', search = '', status = '' } = req.query;
+    const pageNum = Math.max(1, parseInt(String(page), 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(String(limit), 10) || 50));
     
     // In a real production environment with many users, we'd use Typesense or Algolia.
-    // For now, we'll fetch all and filter in memory if there's a search, or just limit if no search.
-    // (Firebase query limitations make substring search difficult)
-    
-    let usersQuery = db.collection('users').orderBy('createdAt', 'desc');
+    // We cap the scan at 1000 to prevent unbounded memory exhaustion while keeping search functional.
+    let usersQuery = db.collection('users').orderBy('createdAt', 'desc').limit(1000);
     
     const snapshot = await usersQuery.get();
     let users = snapshot.docs.map((doc: any) => doc.data() as any);
@@ -64,8 +64,8 @@ adminUsersRouter.get('/', adminAuth, async (req: AdminAuthenticatedRequest, res:
     }
 
     const total = users.length;
-    const startIndex = (Number(page) - 1) * Number(limit);
-    const paginatedUsers = users.slice(startIndex, startIndex + Number(limit));
+    const startIndex = (pageNum - 1) * limitNum;
+    const paginatedUsers = users.slice(startIndex, startIndex + limitNum);
 
     const activeUsers = users.filter((u: any) => (u.accountStatus || 'active') === 'active').length;
     const blockedUsers = users.filter((u: any) => u.accountStatus === 'blocked').length;
@@ -109,15 +109,15 @@ adminUsersRouter.get('/:uid', adminAuth, async (req: AdminAuthenticatedRequest, 
     const referralsSnap = await db.collection('referrals').where('referrerId', '==', uid).limit(5).get();
     const recentReferrals = referralsSnap.docs.map((doc: any) => doc.data());
 
-    // Get recent activity (e.g. from battle logs or xp transactions)
-    const xpSnap = await db.collection('xpTransactions').where('userId', '==', uid).get();
+    // Get recent activity (capped to latest 50 to avoid runaway reads)
+    const xpSnap = await db.collection('xpTransactions').where('userId', '==', uid).limit(50).get();
     const recentActivity = xpSnap.docs
       .map((doc: any) => doc.data())
       .sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
       .slice(0, 10);
     
-    // Get moderation history
-    const auditSnap = await db.collection('auditLogs').where('targetUserId', '==', uid).get();
+    // Get moderation history (capped to latest 50)
+    const auditSnap = await db.collection('auditLogs').where('targetUserId', '==', uid).limit(50).get();
     const moderationHistory = auditSnap.docs
       .map((doc: any) => doc.data())
       .sort((a: any, b: any) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());

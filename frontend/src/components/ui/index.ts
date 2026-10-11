@@ -6,3 +6,4 @@ export * from './ProgressBar';
 export * from './EmptyState';
 export * from './Skeleton';
 export * from './Modal';
+export * from './PageLoader';

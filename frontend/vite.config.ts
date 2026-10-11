@@ -21,5 +21,32 @@ export default defineConfig(() => ({
         secure: false
       }
     }
+  },
+  build: {
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('@monaco-editor') || id.includes('monaco-editor')) {
+              return 'vendor-monaco';
+            }
+            if (id.includes('recharts')) {
+              return 'vendor-recharts';
+            }
+            if (id.includes('firebase')) {
+              return 'vendor-firebase';
+            }
+            if (id.includes('react-icons')) {
+              return 'vendor-icons';
+            }
+            if (id.includes('framer-motion')) {
+              return 'vendor-motion';
+            }
+          }
+        }
+      }
+    }
   }
 }));
+
