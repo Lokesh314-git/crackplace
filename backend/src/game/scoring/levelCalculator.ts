@@ -46,9 +46,11 @@ export class LevelCalculator {
    * e.g., getXpRequiredForLevel(1) returns the total XP needed to reach Level 2.
    */
   public static getXpRequiredForLevel(level: number): number {
+    const base = GAME_CONFIG.levels?.level1Xp ?? 100;
+    const increment = GAME_CONFIG.levels?.levelGrowthIncrement ?? 50;
     let total = 0;
     for (let i = 1; i <= level; i++) {
-      total += Math.floor(1000 * Math.pow(i, 1.6));
+      total += base + (i - 1) * increment;
     }
     return total;
   }

@@ -21,7 +21,9 @@ jest.mock('../middleware/auth', () => ({
     next();
   },
   socketAuthMiddleware: (socket: any, next: any) => next(),
-  strictAuthLimiter: (_req: any, _res: any, next: any) => next()
+  strictAuthLimiter: (_req: any, _res: any, next: any) => next(),
+  optionalAuth: (req: any, _res: any, next: any) => next(),
+  requireRole: () => (_req: any, _res: any, next: any) => next()
 }));
 
 jest.setTimeout(25000);

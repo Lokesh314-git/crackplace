@@ -49,22 +49,18 @@ export class CoinCalculator {
    * Calculate coins for a multiplayer battle outcome
    */
   public static calculateBattleCoins(input: CoinCalculationInput): CoinCalculationResult {
-    const { outcome, accuracyPercentage = 0, streakCount = 0 } = input;
-    const config = GAME_CONFIG.coins.rewards.battle;
+    const { outcome, accuracyPercentage, streakCount = 0 } = input;
     
-    let baseCoins = this.getTierReward(accuracyPercentage, config.tiers);
-    let bonusCoins = config.participationBonus;
+    // Outcome base coins strictly determined by game configuration
+    const baseCoins = outcome === 'WIN' 
+      ? (GAME_CONFIG.coins.battle?.win ?? 20)
+      : outcome === 'LOSS'
+        ? (GAME_CONFIG.coins.battle?.loss ?? 5)
+        : (GAME_CONFIG.coins.battle?.draw ?? 10);
 
-    switch (outcome) {
-      case 'WIN':
-        bonusCoins += config.winBonus;
-        break;
-      case 'DRAW':
-        bonusCoins += Math.floor(config.winBonus / 2);
-        break;
-      case 'LOSS':
-        // Loss just gets participation bonus
-        break;
+    let bonusCoins = 0;
+    if (accuracyPercentage !== undefined && accuracyPercentage > 0 && GAME_CONFIG.coins.rewards?.battle?.tiers) {
+      bonusCoins += this.getTierReward(accuracyPercentage, GAME_CONFIG.coins.rewards.battle.tiers);
     }
 
     if (outcome === 'WIN' && streakCount > 2) {

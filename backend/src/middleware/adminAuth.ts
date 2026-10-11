@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { supabase } from '../config/supabase';
-import { auth } from '../config/firebase';
+import { auth, db } from '../config/firebase';
 import logger from '../utils/logger';
 
 export interface AdminAuthenticatedRequest extends Request {
@@ -44,10 +44,29 @@ export async function adminAuth(req: AdminAuthenticatedRequest, res: Response, n
       throw new Error('Invalid Supabase token');
     }
 
-    // Question Manager admins might have metadata or simply be accepted if they successfully authenticated
-    // Check if role is admin (we can assume success means admin if the app restricts registration)
-    const role = user.user_metadata?.role || user.app_metadata?.role || 'admin';
-    if (role === 'admin') {
+    // Authoritatively check admin role: app_metadata is server-controlled (cannot be forged by client)
+    const appRole = user.app_metadata?.role;
+    const isAppAdmin = appRole === 'admin' || user.app_metadata?.claims_admin === true;
+    
+    // Check optional admin email whitelist
+    const adminEmails = (process.env.ADMIN_EMAILS || '')
+      .split(',')
+      .map(e => e.trim().toLowerCase())
+      .filter(Boolean);
+    const isEmailAdmin = user.email ? adminEmails.includes(user.email.toLowerCase()) : false;
+
+    // Check database role if user exists in Firestore users
+    let isDbAdmin = false;
+    try {
+      const userDoc = await db.collection('users').doc(user.id).get();
+      if (userDoc.exists && userDoc.data()?.role === 'admin') {
+        isDbAdmin = true;
+      }
+    } catch {
+      // Non-fatal if Firestore is not available
+    }
+
+    if (isAppAdmin || isEmailAdmin || isDbAdmin) {
       req.user = {
         uid: user.id,
         email: user.email,
@@ -56,7 +75,7 @@ export async function adminAuth(req: AdminAuthenticatedRequest, res: Response, n
       };
       return next();
     } else {
-      return res.status(403).json({ error: 'Forbidden: Not an admin' });
+      return res.status(403).json({ error: 'Forbidden: Insufficient administrator permissions' });
     }
   } catch (error) {
     logger.warn('Admin auth failure', { error: (error as any).message });

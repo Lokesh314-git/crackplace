@@ -70,14 +70,30 @@ router.post('/generate', optionalAuth, async (req: AuthenticatedRequest, res) =>
 
     const docRef = await db.collection('quizzes').add(quizData);
 
-    res.json({
+    // Sanitize questions for client: do not leak answer key (correctOptionIndex) or explanations before submission
+    const sanitizedQuestions = quizData.questions.map((q) => ({
+      id: q.id,
+      questionText: q.questionText,
+      options: q.options
+    }));
+
+    const clientQuizPayload = {
       id: docRef.id,
       quizId: docRef.id,
-      quiz: {
-        id: docRef.id,
-        ...quizData
-      },
-      ...quizData
+      userId,
+      category,
+      difficulty,
+      language,
+      company: quizData.company,
+      matchedTopicCount,
+      requestedCount,
+      questions: sanitizedQuestions,
+      createdAt: quizData.createdAt
+    };
+
+    res.json({
+      ...clientQuizPayload,
+      quiz: clientQuizPayload
     });
   } catch (error: any) {
     console.error('[QUIZ API] Question retrieval failed:', error);
@@ -121,9 +137,9 @@ router.post(['/:quizId/results', '/:quizId/submit'], optionalAuth, async (req: A
 
     const questionCount = quizData.questions.length;
 
-    // Server-Authoritative Evaluation if answers dictionary is provided
+    // Server-Authoritative Evaluation strictly against database questions
     let calculatedCorrect = 0;
-    if (payload.answers) {
+    if (payload.answers && typeof payload.answers === 'object') {
       quizData.questions.forEach((q: any, idx: number) => {
         const submitted = payload.answers![String(idx)] ?? payload.answers![idx];
         if (typeof submitted === 'number' && submitted === q.correctOptionIndex) {
@@ -131,7 +147,8 @@ router.post(['/:quizId/results', '/:quizId/submit'], optionalAuth, async (req: A
         }
       });
     } else {
-      calculatedCorrect = Math.min(questionCount, Math.max(0, payload.correctAnswers || 0));
+      // If client attempts to omit answers dictionary, score is strictly 0
+      calculatedCorrect = 0;
     }
 
     const timeSpent = payload.timeSpentSeconds || payload.timeTakenSeconds || 60;
@@ -373,6 +390,13 @@ router.post(['/:quizId/results', '/:quizId/submit'], optionalAuth, async (req: A
     res.json({
       message: 'Quiz results recorded successfully',
       results,
+      reviewQuestions: quizData.questions.map((q: any) => ({
+        id: q.id,
+        questionText: q.questionText,
+        options: q.options,
+        correctOptionIndex: q.correctOptionIndex,
+        explanation: q.explanation || ''
+      })),
       profile: updatedProfile,
       xpEarned,
       coinsEarned,

@@ -39,21 +39,33 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 5000;
 
-const allowedOrigins = (process.env.FRONTEND_URL || process.env.CORS_ORIGIN || '*')
+const defaultAllowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:3000',
+  'https://crackplace.onrender.com',
+  'https://crackplace.web.app'
+];
+
+const envOrigins = (process.env.FRONTEND_URL || process.env.CORS_ORIGIN || '')
   .split(',')
   .map(o => o.trim())
   .filter(Boolean);
 
-// Enable CORS
+const allowedOrigins = envOrigins.length > 0 ? envOrigins : defaultAllowedOrigins;
+
+// Enable CORS with defensive origin validation
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(null, true);
+    if (!origin) {
+      return callback(null, true);
     }
+    if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error(`Origin ${origin} is not allowed by CORS`));
   },
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   credentials: true
 }));
 

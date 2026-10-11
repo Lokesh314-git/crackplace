@@ -95,18 +95,28 @@ function setupMockDB() {
   };
 
   class MockDocumentReference {
-    constructor(private collectionName: string, private docId: string) {}
+    constructor(public collectionName: string, public docId: string) {}
+
+    get id() {
+      return this.docId;
+    }
 
     async get() {
       const data = readLocalDB(this.collectionName, this.docId);
       return {
+        id: this.docId,
         exists: data !== null,
-        data: () => data
+        data: () => (data ? { ...data } : undefined)
       };
     }
 
-    async set(data: any) {
-      writeLocalDB(this.collectionName, this.docId, data);
+    async set(data: any, options?: { merge?: boolean }) {
+      if (options?.merge) {
+        const existing = readLocalDB(this.collectionName, this.docId) || {};
+        writeLocalDB(this.collectionName, this.docId, { ...existing, ...data });
+      } else {
+        writeLocalDB(this.collectionName, this.docId, data);
+      }
     }
 
     async update(updates: any) {
@@ -114,63 +124,179 @@ function setupMockDB() {
       const updated = mergeNested(data, updates);
       writeLocalDB(this.collectionName, this.docId, updated);
     }
+
+    async delete() {
+      const dbData = getDBFile();
+      if (dbData[this.collectionName]) {
+        delete dbData[this.collectionName][this.docId];
+        saveDBFile(dbData);
+      }
+    }
   }
 
-  class MockCollectionReference {
-    constructor(private name: string) {}
-
-    async add(data: any) {
-      const id = `mock_${Math.random().toString(36).substr(2, 9)}`;
-      writeLocalDB(this.name, id, data);
-      return { id };
-    }
-
-    doc(id: string) {
-      return new MockDocumentReference(this.name, id);
-    }
+  class MockQuery {
+    constructor(
+      protected collectionName: string,
+      protected filters: Array<(doc: any) => boolean> = [],
+      protected sortField?: string,
+      protected sortDirection: 'asc' | 'desc' = 'asc',
+      protected limitCount?: number
+    ) {}
 
     where(field: string, op: string, value: any) {
+      const newFilter = (doc: any) => {
+        if (op === '==') return doc[field] === value;
+        if (op === '!=') return doc[field] !== value;
+        if (op === '>') return doc[field] > value;
+        if (op === '>=') return doc[field] >= value;
+        if (op === '<') return doc[field] < value;
+        if (op === '<=') return doc[field] <= value;
+        return true;
+      };
+      return new MockQuery(this.collectionName, [...this.filters, newFilter], this.sortField, this.sortDirection, this.limitCount);
+    }
+
+    orderBy(field: string, direction: 'asc' | 'desc' = 'asc') {
+      return new MockQuery(this.collectionName, this.filters, field, direction, this.limitCount);
+    }
+
+    limit(count: number) {
+      return new MockQuery(this.collectionName, this.filters, this.sortField, this.sortDirection, count);
+    }
+
+    async get() {
+      const all = getCollection(this.collectionName);
+      let items = Object.entries(all).map(([id, doc]: any) => ({
+        id,
+        ...doc
+      }));
+
+      for (const filter of this.filters) {
+        items = items.filter(filter);
+      }
+
+      if (this.sortField) {
+        items.sort((a: any, b: any) => {
+          const valA = a[this.sortField!];
+          const valB = b[this.sortField!];
+          if (valA === undefined || valB === undefined) return 0;
+          if (valA < valB) return this.sortDirection === 'desc' ? 1 : -1;
+          if (valA > valB) return this.sortDirection === 'desc' ? -1 : 1;
+          return 0;
+        });
+      }
+
+      if (this.limitCount !== undefined) {
+        items = items.slice(0, this.limitCount);
+      }
+
+      const docs = items.map((item) => ({
+        id: item.id,
+        exists: true,
+        data: () => ({ ...item })
+      }));
+
       return {
-        get: async () => {
-          const all = getCollection(this.name);
-          const filtered = Object.entries(all)
-            .filter(([_, doc]: any) => doc[field] === value)
-            .map(([id, doc]: any) => ({
-              id,
-              data: () => doc
-            }));
-          return {
-            forEach: (cb: any) => filtered.forEach(cb)
-          };
-        }
+        empty: docs.length === 0,
+        size: docs.length,
+        docs,
+        forEach: (cb: (doc: any) => void) => docs.forEach(cb)
       };
     }
   }
 
+  class MockCollectionReference extends MockQuery {
+    constructor(name: string) {
+      super(name);
+    }
+
+    doc(id?: string) {
+      const docId = id || `mock_${Math.random().toString(36).substr(2, 9)}`;
+      return new MockDocumentReference(this.collectionName, docId);
+    }
+
+    async add(data: any) {
+      const id = `mock_${Math.random().toString(36).substr(2, 9)}`;
+      writeLocalDB(this.collectionName, id, data);
+      return { id };
+    }
+  }
+
   db = {
-    collection: (name: string) => new MockCollectionReference(name)
+    collection: (name: string) => new MockCollectionReference(name),
+    runTransaction: async (updateFunction: (transaction: any) => Promise<any>) => {
+      const transaction = {
+        get: async (ref: any) => ref.get(),
+        set: (ref: any, data: any, options?: any) => ref.set(data, options),
+        update: (ref: any, data: any) => ref.update(data),
+        delete: (ref: any) => ref.delete()
+      };
+      return await updateFunction(transaction);
+    },
+    batch: () => {
+      const operations: Array<() => Promise<void>> = [];
+      const batchInstance: any = {
+        set: (ref: any, data: any, options?: any) => {
+          operations.push(() => ref.set(data, options));
+          return batchInstance;
+        },
+        update: (ref: any, data: any) => {
+          operations.push(() => ref.update(data));
+          return batchInstance;
+        },
+        delete: (ref: any) => {
+          operations.push(() => ref.delete());
+          return batchInstance;
+        },
+        commit: async () => {
+          for (const op of operations) {
+            await op();
+          }
+        }
+      };
+      return batchInstance;
+    }
   };
 
   auth = {
     verifyIdToken: async (token: string) => {
+      if (!token || typeof token !== 'string') {
+        throw new Error('Decoding Firebase ID token failed: Token is empty or not a string.');
+      }
+
+      if (token.includes('invalid') || token.includes('malformed')) {
+        throw new Error('Decoding Firebase ID token failed: Invalid token format.');
+      }
+
       try {
         const parts = token.split('.');
         if (parts.length === 3) {
           const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
-          return {
-            uid: payload.user_id || payload.sub,
-            email: payload.email,
-            name: payload.name || payload.display_name,
-            ...payload
-          };
+          if (payload && (payload.user_id || payload.sub || payload.uid)) {
+            return {
+              uid: payload.user_id || payload.sub || payload.uid,
+              email: payload.email,
+              name: payload.name || payload.display_name,
+              role: payload.role || 'student',
+              ...payload
+            };
+          }
         }
       } catch (e) {
-        console.error('Failed to parse token payload in fallback:', e);
+        throw new Error('Decoding Firebase ID token failed: Invalid token payload.');
       }
+
+      // If in production, strictly reject non-JWT tokens
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('Decoding Firebase ID token failed: Unrecognized token format.');
+      }
+
+      // In local non-production environment, allow mock token
       return {
         uid: 'mock_uid_123',
         email: 'mock@crackprep.ai',
-        name: 'Mock Cadet'
+        name: 'Mock Cadet',
+        role: 'student'
       };
     }
   };
