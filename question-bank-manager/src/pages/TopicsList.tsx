@@ -10,21 +10,31 @@ export const TopicsList: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const formatSlugName = (slug: string) => {
+    return slug
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+
   const fetchTopics = async () => {
     if (!subjectSlug) return;
     try {
       setLoading(true);
       setError(null);
-      const res = await questionService.getTopicStats(subjectSlug);
+      setSubjectName(formatSlugName(subjectSlug));
+
+      const [res, subjects] = await Promise.all([
+        questionService.getTopicStats(subjectSlug),
+        questionService.getSubjects().catch(() => [])
+      ]);
       setTopics(res);
       
-      const subjects = await questionService.getSubjects();
       const sub = subjects.find(s => s.slug === subjectSlug);
-      if (sub) setSubjectName(sub.name);
-      else setSubjectName(subjectSlug);
-
+      if (sub) {
+        setSubjectName(sub.name);
+      }
     } catch (err: any) {
-      setError(err.message || 'Failed to load topics');
+      setError(err.message || 'Failed to load subtopics');
     } finally {
       setLoading(false);
     }
