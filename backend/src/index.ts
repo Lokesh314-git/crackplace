@@ -27,6 +27,7 @@ import {
 import { XpTransactionService } from './services/XpTransactionService';
 import { COSMETICS_CATALOG, checkIsLegendaryPlayer } from './utils/cosmetics';
 import { resolveUserAvatar, getAvatarImageUrl, getUserAvatarUrl } from './utils/avatarResolver';
+import { isUserExcludedFromLeaderboard, cleanupLeaderboardStaleRecords } from './services/leaderboardCleanup';
 import quizRouter from './routes/quiz';
 import codingRouter from './routes/coding';
 import interviewRouter from './routes/interview';
@@ -382,16 +383,8 @@ app.get('/api/leaderboard', verifyToken, async (req: AuthenticatedRequest, res) 
       const data = doc.data();
       const uid = doc.id;
 
-      // Filter out test fixtures, demo accounts, and bots
-      if (
-        data.isTest ||
-        data.isDemo ||
-        data.environment === 'test' ||
-        uid.startsWith('user_test_') ||
-        uid.startsWith('user_host_') ||
-        uid.startsWith('user_guest_') ||
-        uid.startsWith('user_third_')
-      ) {
+      // Authoritatively exclude soft-deleted, blocked, test fixtures, and bots
+      if (isUserExcludedFromLeaderboard(data, uid)) {
         return;
       }
 
@@ -500,6 +493,17 @@ app.get('/api/profile/:uid/public', verifyToken, async (req: AuthenticatedReques
     }
 
     const data = userDoc.data() || {};
+
+    // Do not leak profile data for deactivated, deleted, or blocked accounts
+    if (
+      data.accountStatus === 'deleted' ||
+      data.isDeleted === true ||
+      Boolean(data.deletedAt) ||
+      data.accountStatus === 'blocked' ||
+      (typeof data.displayName === 'string' && data.displayName.trim().toLowerCase() === 'deleted user')
+    ) {
+      return res.status(404).json({ error: 'Profile not found or account is deactivated', code: 'PROFILE_DEACTIVATED' });
+    }
     const rawXp = Number(data.xp || 0);
     const computedLevel = calculateLevelFromXP(rawXp);
     const battleRating = Number(data.battleRating ?? data.eloRating ?? 1200);
@@ -1480,6 +1484,13 @@ if (process.env.NODE_ENV !== 'test') {
     logger.info(`CrackPlace AI Backend running on port ${port}`, { 
       env: process.env.NODE_ENV || 'development',
       redis: isRedisAvailable ? 'CONNECTED' : 'IN_MEMORY_SIMULATOR'
+    });
+
+    // Run non-blocking idempotent stale record audit to purge legacy deleted records from leaderboard
+    cleanupLeaderboardStaleRecords().catch((cleanupErr) => {
+      logger.warn('[STARTUP] Non-blocking initial leaderboard cleanup encountered an error:', {
+        error: String(cleanupErr)
+      });
     });
   });
 }

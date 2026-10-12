@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { db, auth } from '../config/firebase';
 import { adminAuth, AdminAuthenticatedRequest } from '../middleware/adminAuth';
 import logger from '../utils/logger';
+import { invalidateLeaderboardCache, cleanupLeaderboardStaleRecords } from '../services/leaderboardCleanup';
 
 export const adminUsersRouter = Router();
 
@@ -172,8 +173,12 @@ adminUsersRouter.post('/:uid/block', adminAuth, async (req: AdminAuthenticatedRe
     // Update Firestore user document
     await db.collection('users').doc(uid).update({
       accountStatus: blocked ? 'blocked' : 'active',
+      ineligibleForLeaderboard: blocked ? true : false,
       updatedAt: new Date().toISOString()
     });
+
+    // Invalidate leaderboard cache so blocked users are immediately excluded
+    await invalidateLeaderboardCache();
 
     await logAdminAction(req.user.uid, blocked ? 'BLOCK' : 'UNBLOCK', uid, reason || internalNote, 'success', { internalNote });
 
@@ -187,7 +192,7 @@ adminUsersRouter.post('/:uid/block', adminAuth, async (req: AdminAuthenticatedRe
 
 /**
  * POST /api/admin/users/:uid/delete
- * Soft delete a user safely
+ * Soft delete a user safely, tombstone their profile, and immediately purge leaderboard caches
  */
 adminUsersRouter.post('/:uid/delete', adminAuth, async (req: AdminAuthenticatedRequest, res: Response) => {
   try {
@@ -226,9 +231,11 @@ adminUsersRouter.post('/:uid/delete', adminAuth, async (req: AdminAuthenticatedR
       logger.warn('Could not update Firebase Auth disabled state', { uid, error: String(authErr) });
     }
 
-    // Mask PII and mark as deleted
+    // Mask PII and mark as permanently deleted & ineligible for leaderboard
     await db.collection('users').doc(uid).update({
       accountStatus: 'deleted',
+      isDeleted: true,
+      ineligibleForLeaderboard: true,
       deletedAt: new Date().toISOString(),
       displayName: 'Deleted User',
       email: 'deleted_' + uid + '@crackplace.ai',
@@ -239,12 +246,41 @@ adminUsersRouter.post('/:uid/delete', adminAuth, async (req: AdminAuthenticatedR
       updatedAt: new Date().toISOString()
     });
 
+    // Invalidate leaderboard cache immediately so deleted user never appears in rankings
+    await invalidateLeaderboardCache();
+
     await logAdminAction(req.user.uid, 'DELETE', uid, reason, 'success');
 
-    res.json({ success: true, message: `User soft-deleted successfully` });
+    res.json({ success: true, message: `User soft-deleted successfully and purged from leaderboard rankings` });
   } catch (error) {
     logger.error('Error deleting user:', { error: String(error) });
     await logAdminAction(req.user!.uid, 'DELETE_USER', req.params.uid, String(error), 'failed');
     res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+/**
+ * POST /api/admin/users/cleanup-leaderboard
+ * Trigger manual cleanup of deleted/stale records from leaderboard and purge caches
+ */
+adminUsersRouter.post('/cleanup-leaderboard', adminAuth, async (req: AdminAuthenticatedRequest, res: Response) => {
+  try {
+    if (req.user?.role !== 'admin') {
+      await logAdminAction(req.user?.uid || 'unknown', 'CLEANUP_LEADERBOARD', 'system', 'Unauthorized', 'denied');
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const result = await cleanupLeaderboardStaleRecords();
+    await logAdminAction(req.user.uid, 'CLEANUP_LEADERBOARD', 'system', `Cleaned ${result.cleanedCount} stale records`, 'success', result);
+
+    res.json({
+      success: true,
+      message: 'Leaderboard cleaned and cache flushed successfully',
+      ...result
+    });
+  } catch (error: any) {
+    logger.error('Error during manual leaderboard cleanup:', { error: String(error) });
+    await logAdminAction(req.user?.uid || 'unknown', 'CLEANUP_LEADERBOARD', 'system', String(error), 'failed');
+    res.status(500).json({ error: 'Failed to clean leaderboard' });
   }
 });

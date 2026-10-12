@@ -31,16 +31,35 @@ class MemoryRedisMock {
     return 'OK';
   }
 
-  async del(key: string): Promise<number> {
-    const existed = this.store.has(key);
-    this.store.delete(key);
-    if (this.ttls.has(key)) {
-      clearTimeout(this.ttls.get(key)!);
-      this.ttls.delete(key);
+  async del(...keys: (string | string[])[]): Promise<number> {
+    const flatKeys = keys.flat();
+    let count = 0;
+    for (const key of flatKeys) {
+      const existed = this.store.has(key) || this.sets.has(key) || this.sortedSets.has(key);
+      this.store.delete(key);
+      if (this.ttls.has(key)) {
+        clearTimeout(this.ttls.get(key)!);
+        this.ttls.delete(key);
+      }
+      this.sets.delete(key);
+      this.sortedSets.delete(key);
+      if (existed) count++;
     }
-    this.sets.delete(key);
-    this.sortedSets.delete(key);
-    return existed ? 1 : 0;
+    return count;
+  }
+
+  async keys(pattern: string): Promise<string[]> {
+    const allKeys = new Set<string>([
+      ...this.store.keys(),
+      ...this.sets.keys(),
+      ...this.sortedSets.keys()
+    ]);
+    if (pattern === '*' || pattern === '') {
+      return Array.from(allKeys);
+    }
+    const regexPattern = '^' + pattern.replace(/([.+?^=!:${}()|\[\]\/\\])/g, "\\$1").replace(/\*/g, '.*') + '$';
+    const regex = new RegExp(regexPattern);
+    return Array.from(allKeys).filter(k => regex.test(k));
   }
 
   async sadd(key: string, ...members: string[]): Promise<number> {

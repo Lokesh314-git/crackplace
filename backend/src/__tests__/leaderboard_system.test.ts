@@ -2,6 +2,7 @@ import request from 'supertest';
 import { app } from '../index';
 import { db } from '../config/firebase';
 import { redisClient } from '../config/redis';
+import { cleanupLeaderboardStaleRecords, invalidateLeaderboardCache } from '../services/leaderboardCleanup';
 
 // Mock auth middleware
 jest.mock('../middleware/auth', () => ({
@@ -87,6 +88,47 @@ describe('Authoritative Leaderboard System Suite', () => {
       isDemo: true
     });
 
+    // Seed soft-deleted user (exact reproduction: 'Deleted User', 570 XP, 1000 Elo)
+    await db.collection('users').doc('user_deleted_tombstone').set({
+      uid: 'user_deleted_tombstone',
+      displayName: 'Deleted User',
+      email: 'deleted_user_deleted_tombstone@crackplace.ai',
+      accountStatus: 'deleted',
+      isDeleted: true,
+      ineligibleForLeaderboard: true,
+      deletedAt: new Date().toISOString(),
+      level: 1,
+      xp: 570,
+      totalXp: 570,
+      battleRating: 1000
+    });
+
+    // Seed blocked user
+    await db.collection('users').doc('user_blocked_sample').set({
+      uid: 'user_blocked_sample',
+      displayName: 'Blocked Candidate',
+      email: 'blocked@crackplace.ai',
+      accountStatus: 'blocked',
+      ineligibleForLeaderboard: true,
+      level: 5,
+      xp: 2500,
+      totalXp: 2500,
+      battleRating: 1800
+    });
+
+    // Seed legacy soft-deleted user missing ineligibleForLeaderboard flag
+    await db.collection('users').doc('user_legacy_unflagged').set({
+      uid: 'user_legacy_unflagged',
+      displayName: 'Deleted User',
+      email: 'deleted_user_legacy_unflagged@crackplace.ai',
+      accountStatus: 'deleted',
+      deletedAt: new Date().toISOString(),
+      level: 1,
+      xp: 400,
+      totalXp: 400,
+      battleRating: 900
+    });
+
     // Seed weekly XP transactions for Alpha and Beta
     const thisWeek = new Date().toISOString();
     await db.collection('xpTransactions').doc('weekly_tx_alpha_1').set({
@@ -113,6 +155,9 @@ describe('Authoritative Leaderboard System Suite', () => {
       await db.collection('users').doc('real_user_gamma').delete();
       await db.collection('users').doc('user_test_demo_account').delete();
       await db.collection('users').doc('user_host_sample').delete();
+      await db.collection('users').doc('user_deleted_tombstone').delete();
+      await db.collection('users').doc('user_blocked_sample').delete();
+      await db.collection('users').doc('user_legacy_unflagged').delete();
       await db.collection('xpTransactions').doc('weekly_tx_alpha_1').delete();
       await db.collection('xpTransactions').doc('weekly_tx_beta_1').delete();
     } catch {
@@ -208,5 +253,104 @@ describe('Authoritative Leaderboard System Suite', () => {
     const uids = res.body.map((u: any) => u.uid);
     const uniqueUids = new Set(uids);
     expect(uids.length).toBe(uniqueUids.size);
+  });
+
+  it('6. permanently excludes soft-deleted and blocked accounts from leaderboard rankings (resolves "Deleted User" bug)', async () => {
+    // Flush cache to force fresh live query
+    await invalidateLeaderboardCache();
+
+    // Check Global rankings
+    const globalRes = await request(app)
+      .get('/api/leaderboard?type=global')
+      .set('Authorization', 'Bearer real_user_token_1');
+
+    expect(globalRes.status).toBe(200);
+    const globalUids = globalRes.body.map((u: any) => u.uid);
+    const globalNames = globalRes.body.map((u: any) => (u.displayName || '').toLowerCase());
+
+    expect(globalUids).not.toContain('user_deleted_tombstone');
+    expect(globalUids).not.toContain('user_blocked_sample');
+    expect(globalNames).not.toContain('deleted user');
+
+    // Check Weekly rankings
+    const weeklyRes = await request(app)
+      .get('/api/leaderboard?type=weekly')
+      .set('Authorization', 'Bearer real_user_token_1');
+
+    expect(weeklyRes.status).toBe(200);
+    const weeklyUids = weeklyRes.body.map((u: any) => u.uid);
+    const weeklyNames = weeklyRes.body.map((u: any) => (u.displayName || '').toLowerCase());
+
+    expect(weeklyUids).not.toContain('user_deleted_tombstone');
+    expect(weeklyUids).not.toContain('user_blocked_sample');
+    expect(weeklyNames).not.toContain('deleted user');
+  });
+
+  it('7. assigns strictly consecutive 1-based ranks with no skipped rank slots after excluding deleted accounts', async () => {
+    await invalidateLeaderboardCache();
+
+    const res = await request(app)
+      .get('/api/leaderboard?type=global')
+      .set('Authorization', 'Bearer real_user_token_1');
+
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBeGreaterThanOrEqual(3);
+
+    // Verify every user has rank = index + 1
+    res.body.forEach((user: any, index: number) => {
+      expect(user.rank).toBe(index + 1);
+    });
+
+    // Verify specific valid candidates maintain proper sequence without gaps
+    const alpha = res.body.find((u: any) => u.uid === 'real_user_alpha');
+    const beta = res.body.find((u: any) => u.uid === 'real_user_beta');
+    const gamma = res.body.find((u: any) => u.uid === 'real_user_gamma');
+
+    expect(alpha.rank).toBe(1);
+    expect(beta.rank).toBe(2);
+    expect(gamma.rank).toBe(3);
+  });
+
+  it('8. rejects public profile viewing for soft-deleted or blocked accounts with 404', async () => {
+    // Deleted user profile should 404
+    const deletedRes = await request(app)
+      .get('/api/profile/user_deleted_tombstone/public')
+      .set('Authorization', 'Bearer real_user_token_1');
+    expect(deletedRes.status).toBe(404);
+    expect(deletedRes.body.code).toBe('PROFILE_DEACTIVATED');
+
+    // Blocked user profile should 404
+    const blockedRes = await request(app)
+      .get('/api/profile/user_blocked_sample/public')
+      .set('Authorization', 'Bearer real_user_token_1');
+    expect(blockedRes.status).toBe(404);
+
+    // Active user profile should succeed
+    const activeRes = await request(app)
+      .get('/api/profile/real_user_alpha/public')
+      .set('Authorization', 'Bearer real_user_token_1');
+    expect(activeRes.status).toBe(200);
+    expect(activeRes.body.displayName).toBe('Alpha Prime');
+  });
+
+  it('9. cleanupLeaderboardStaleRecords idempotently scans and flags legacy deleted records and purges cache', async () => {
+    // Before cleanup, user_legacy_unflagged was missing ineligibleForLeaderboard
+    const preDoc = await db.collection('users').doc('user_legacy_unflagged').get();
+    expect(preDoc.data()?.ineligibleForLeaderboard).toBeUndefined();
+
+    // Run cleanup
+    const result = await cleanupLeaderboardStaleRecords();
+    expect(result.totalScanned).toBeGreaterThan(0);
+    expect(result.cleanedCount).toBeGreaterThanOrEqual(1);
+
+    // After cleanup, doc has tombstone flags set
+    const postDoc = await db.collection('users').doc('user_legacy_unflagged').get();
+    expect(postDoc.data()?.isDeleted).toBe(true);
+    expect(postDoc.data()?.ineligibleForLeaderboard).toBe(true);
+    expect(postDoc.data()?.accountStatus).toBe('deleted');
+
+    // Running cleanup again is idempotent (cleans 0 additional records)
+    const secondResult = await cleanupLeaderboardStaleRecords();
+    expect(secondResult.cleanedCount).toBe(0);
   });
 });

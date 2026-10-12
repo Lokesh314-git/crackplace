@@ -24,6 +24,8 @@ interface LeaderboardUser {
   equippedTitle?: string | null;
   college?: string | null;
   isLegendaryPlayer?: boolean;
+  accountStatus?: string;
+  isDeleted?: boolean;
 }
 
 export const Leaderboards: React.FC = () => {
@@ -71,8 +73,22 @@ export const Leaderboards: React.FC = () => {
         throw new Error(errorMsg || 'Failed to load leaderboard data.');
       }
 
-      const userList = Array.isArray(data) ? data : (data.users || []);
-      setRanks(userList);
+      const rawUserList: LeaderboardUser[] = Array.isArray(data) ? data : (data.users || []);
+      // Defense-in-depth: Exclude any soft-deleted, tombstoned, or blocked accounts and guarantee sequential ranks
+      const sanitizedUsers = rawUserList
+        .filter((u) => {
+          if (!u || !u.uid) return false;
+          if (u.accountStatus === 'deleted' || u.accountStatus === 'blocked' || u.isDeleted) return false;
+          const name = (u.displayName || '').trim().toLowerCase();
+          if (name === 'deleted user' || name === '[deleted]' || name === 'deleted_user') return false;
+          return true;
+        })
+        .map((u, idx) => ({
+          ...u,
+          rank: idx + 1
+        }));
+
+      setRanks(sanitizedUsers);
     } catch (err: any) {
       console.error('Leaderboard fetch error:', err);
       setError(err.message || 'Unable to load rankings. Please try again.');
@@ -103,9 +119,13 @@ export const Leaderboards: React.FC = () => {
     };
   }, [tab, fetchLeaderboard]);
 
-  const filteredRanks = ranks.filter(r => 
-    (r.displayName || '').toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredRanks = ranks.filter(r => {
+    const name = (r.displayName || '').trim().toLowerCase();
+    if (name === 'deleted user' || name === '[deleted]' || r.accountStatus === 'deleted' || r.isDeleted) {
+      return false;
+    }
+    return name.includes(search.toLowerCase());
+  });
 
   const topThree = filteredRanks.slice(0, 3);
   const remainingAll = filteredRanks.slice(3);
