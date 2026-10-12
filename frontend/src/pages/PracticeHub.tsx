@@ -62,12 +62,7 @@ export const PracticeHub: React.FC = () => {
     <div className="space-y-6">
       {/* Header */}
       <div className="space-y-1">
-        <div className="flex items-center gap-2">
-          <Badge variant="primary" size="sm">
-            Supabase Question Bank
-          </Badge>
-          <span className="text-xs text-slate-400">Comprehensive Placement Modules</span>
-        </div>
+
         <h1 className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">
           Topic-wise Practice Hub
         </h1>
@@ -128,34 +123,34 @@ export const PracticeHub: React.FC = () => {
           );
         })}
       </div>
-      {/* Recent Assessments */ }
-  {
-    history.length > 0 && (
-      <div className="mt-8">
-        <h2 className="text-lg font-bold text-slate-900 mb-4">Recent Assessments</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {history.map((h, i) => (
-            <div key={h.id || i} className="p-4 rounded-xl border border-slate-200 bg-white shadow-xs">
-              <div className="flex justify-between items-center mb-2">
-                <span className="font-semibold text-slate-900 truncate">{h.category}</span>
-                <Badge variant={h.difficulty === 'hard' ? 'error' : h.difficulty === 'medium' ? 'warning' : 'primary'} size="sm">
-                  {h.difficulty}
-                </Badge>
-              </div>
-              <div className="flex justify-between items-center text-xs text-slate-500 pt-2 border-t border-slate-100">
-                <span>{new Date(h.createdAt).toLocaleDateString()}</span>
-                {h.results ? (
-                  <span className="font-bold text-emerald-600">{h.results.score}% Score</span>
-                ) : (
-                  <span className="text-slate-400 italic">Incomplete</span>
-                )}
-              </div>
+      {/* Recent Assessments */}
+      {
+        history.length > 0 && (
+          <div className="mt-8">
+            <h2 className="text-lg font-bold text-slate-900 mb-4">Recent Assessments</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {history.map((h, i) => (
+                <div key={h.id || i} className="p-4 rounded-xl border border-slate-200 bg-white shadow-xs">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="font-semibold text-slate-900 truncate">{h.category}</span>
+                    <Badge variant={h.difficulty === 'hard' ? 'error' : h.difficulty === 'medium' ? 'warning' : 'primary'} size="sm">
+                      {h.difficulty}
+                    </Badge>
+                  </div>
+                  <div className="flex justify-between items-center text-xs text-slate-500 pt-2 border-t border-slate-100">
+                    <span>{new Date(h.createdAt).toLocaleDateString()}</span>
+                    {h.results ? (
+                      <span className="font-bold text-emerald-600">{h.results.score}% Score</span>
+                    ) : (
+                      <span className="text-slate-400 italic">Incomplete</span>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      </div>
-    )
-  }
+          </div>
+        )
+      }
     </div >
   );
 };

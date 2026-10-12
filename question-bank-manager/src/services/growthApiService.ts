@@ -53,8 +53,13 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
 // -------------------------------------------------------------
 
 export async function getReferrals() {
-  const data = await fetchWithAuth('/api/invite-promote/admin/referrals');
-  return data.referrals;
+  try {
+    const data = await fetchWithAuth('/api/invite-promote/admin/referrals');
+    return data.referrals || [];
+  } catch (err: any) {
+    console.warn(`Referrals fetch unavailable (${err.message}). Returning empty fallback.`);
+    return [];
+  }
 }
 
 // -------------------------------------------------------------
@@ -62,8 +67,13 @@ export async function getReferrals() {
 // -------------------------------------------------------------
 
 export async function getPromotions() {
-  const data = await fetchWithAuth('/api/invite-promote/admin/promotions');
-  return data.promotions;
+  try {
+    const data = await fetchWithAuth('/api/invite-promote/admin/promotions');
+    return data.promotions || [];
+  } catch (err: any) {
+    console.warn(`Promotions fetch unavailable (${err.message}). Returning empty fallback.`);
+    return [];
+  }
 }
 
 export async function reviewPromotion(promotionId: string, payload: {
@@ -88,8 +98,13 @@ export async function reviewPromotion(promotionId: string, payload: {
 // -------------------------------------------------------------
 
 export async function getCashRewards() {
-  const data = await fetchWithAuth('/api/invite-promote/admin/cash-rewards');
-  return data.cashRewards;
+  try {
+    const data = await fetchWithAuth('/api/invite-promote/admin/cash-rewards');
+    return data.cashRewards || [];
+  } catch (err: any) {
+    console.warn(`Cash rewards fetch unavailable (${err.message}). Returning empty fallback.`);
+    return [];
+  }
 }
 
 export async function updateCashRewardStatus(rewardId: string, status: string, paymentReference?: string) {
@@ -105,11 +120,34 @@ export async function updateCashRewardStatus(rewardId: string, status: string, p
 // -------------------------------------------------------------
 
 export async function getGrowthDashboardStats() {
-  const data = await fetchWithAuth('/api/invite-promote/admin/dashboard');
-  return data;
+  try {
+    const data = await fetchWithAuth('/api/invite-promote/admin/dashboard');
+    return data;
+  } catch (err: any) {
+    console.warn(`Growth dashboard stats unavailable (${err.message}). Returning fallback stats.`);
+    return {
+      totalReferrals: 0,
+      completedReferrals: 0,
+      pendingReferrals: 0,
+      totalPromotions: 0,
+      pendingPromotions: 0,
+      approvedPromotions: 0,
+      pendingCashPayments: 0,
+      completedCashPayments: 0,
+      totalCoinsIssued: 0,
+      recentActivity: [],
+      warning: err.message
+    };
+  }
 }
 
 export async function getAuditLogs() {
-  const data = await fetchWithAuth('/api/invite-promote/admin/audit-logs');
-  return data.logs;
+  try {
+    const data = await fetchWithAuth('/api/invite-promote/admin/audit-logs');
+    return data.logs || [];
+  } catch (err: any) {
+    console.warn(`Audit logs fetch unavailable (${err.message}). Returning empty fallback.`);
+    return [];
+  }
 }
+

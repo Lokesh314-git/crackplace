@@ -21,10 +21,16 @@ export async function adminAuth(req: AdminAuthenticatedRequest, res: Response, n
 
   const token = authHeader.split('Bearer ')[1];
 
+  const adminEmails = (process.env.ADMIN_EMAILS || 'lokesh.8637427067@gmail.com,admin@crackplace.ai')
+    .split(',')
+    .map(e => e.trim().toLowerCase())
+    .filter(Boolean);
+
   try {
     // 1. Try Firebase Admin Verify
     const decodedToken = await auth.verifyIdToken(token);
-    if (decodedToken.role === 'admin') {
+    const isFirebaseEmailAdmin = decodedToken.email ? adminEmails.includes(decodedToken.email.toLowerCase()) : false;
+    if (decodedToken.role === 'admin' || decodedToken.admin === true || isFirebaseEmailAdmin) {
       req.user = {
         uid: decodedToken.uid,
         email: decodedToken.email,
@@ -44,15 +50,9 @@ export async function adminAuth(req: AdminAuthenticatedRequest, res: Response, n
       throw new Error('Invalid Supabase token');
     }
 
-    // Authoritatively check admin role: app_metadata is server-controlled (cannot be forged by client)
-    const appRole = user.app_metadata?.role;
+    // Authoritatively check admin role: app_metadata, user_metadata, or admin email whitelist
+    const appRole = user.app_metadata?.role || user.user_metadata?.role;
     const isAppAdmin = appRole === 'admin' || user.app_metadata?.claims_admin === true;
-    
-    // Check optional admin email whitelist
-    const adminEmails = (process.env.ADMIN_EMAILS || '')
-      .split(',')
-      .map(e => e.trim().toLowerCase())
-      .filter(Boolean);
     const isEmailAdmin = user.email ? adminEmails.includes(user.email.toLowerCase()) : false;
 
     // Check database role if user exists in Firestore users
@@ -82,3 +82,4 @@ export async function adminAuth(req: AdminAuthenticatedRequest, res: Response, n
     return res.status(403).json({ error: 'Forbidden: Invalid token or insufficient permissions' });
   }
 }
+

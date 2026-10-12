@@ -62,6 +62,18 @@ export const GrowthDashboard: React.FC = () => {
         </div>
       </div>
 
+      {stats?.warning && (
+        <div className="mb-6 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-xs flex items-start gap-2.5">
+          <Activity className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+          <div>
+            <p className="font-semibold">Backend sync status: Live stats restricted</p>
+            <p className="mt-0.5 text-amber-700 dark:text-amber-400">
+              {stats.warning}. On Render, set environment variable <code className="px-1 py-0.5 bg-amber-100 dark:bg-amber-900 rounded font-mono">ADMIN_EMAILS=lokesh.8637427067@gmail.com</code> to grant live administrative access.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {cards.map((card, i) => {
           const Icon = card.icon;

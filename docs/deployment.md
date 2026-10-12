@@ -91,7 +91,11 @@ REDIS_URL=rediss://default:password@your-redis-host:6379
 
 # OpenRouter AI Keys (Optional for study & interview coaching)
 OPENROUTER_QWEN_KEY=
+
+# Administrator Email Whitelist (Comma-separated emails authorized for Question Bank & Growth dashboards)
+ADMIN_EMAILS=lokesh.8637427067@gmail.com,admin@crackplace.ai
 ```
+
 
 ---
 
