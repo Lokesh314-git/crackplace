@@ -17,6 +17,7 @@ import { useAuthStore } from '../store/authStore';
 import { SUBJECT_LIST, normalizeSubjectSlug } from '../constants/subjects';
 import type { SubjectConfig } from '../constants/subjects';
 import { questionService } from '../services/questionService';
+import { useQuizStore } from '../store/quizStore';
 
 const ICON_MAP: Record<string, React.ReactNode> = {
   FaCalculator: <FaCalculator className="w-5 h-5 text-blue-600" />,
@@ -33,6 +34,11 @@ export const PracticeHub: React.FC = () => {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const { token } = useAuthStore();
   const [history, setHistory] = useState<any[]>([]);
+
+  // Returning to Practice Hub resets any previous transient assessment attempt
+  useEffect(() => {
+    useQuizStore.getState().resetQuizState();
+  }, []);
 
   useEffect(() => {
     // Dynamically load live counts from Supabase Question Bank
@@ -114,6 +120,7 @@ export const PracticeHub: React.FC = () => {
 
                 <Link
                   to={targetUrl}
+                  onClick={() => useQuizStore.getState().resetQuizState()}
                   className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-slate-50 hover:bg-blue-600 hover:text-white text-slate-700 text-xs font-semibold transition-colors border border-slate-200"
                 >
                   <FaCirclePlay className="w-3.5 h-3.5" />

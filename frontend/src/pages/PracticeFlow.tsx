@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useQuizStore } from '../store/quizStore';
 import { useAuthStore } from '../store/authStore';
@@ -39,7 +39,7 @@ const COUNTS = [5, 10, 15, 20];
 
 export const PracticeFlow: React.FC = () => {
   const { subject } = useParams();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const reviewId = searchParams.get('review');
   const navigate = useNavigate();
   const { token } = useAuthStore();
@@ -57,7 +57,8 @@ export const PracticeFlow: React.FC = () => {
     prevQuestion,
     tickTimer,
     finishQuiz,
-    resetQuizState
+    resetQuizState,
+    initializeSubjectSession
   } = useQuizStore();
 
   const selectedCategory = normalizeSubjectSlug(subject || 'quantitative_aptitude');
@@ -68,10 +69,36 @@ export const PracticeFlow: React.FC = () => {
   const [selectedCount, setSelectedCount] = useState(5);
   // Local UI status
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const activeLaunchRef = useRef<AbortController | null>(null);
+
+  // Synchronize subject session state with route parameters
+  useEffect(() => {
+    // If a specific completed assessment review is requested via query param (?review=quizId), let review loader handle it
+    if (reviewId) return;
+
+    // When navigating to a subject without reviewId, initialize a clean session for this subject
+    // This clears any previous assessment's scorecard or stale state from another subject
+    initializeSubjectSession(selectedCategory);
+    setErrorMessage(null);
+  }, [selectedCategory, reviewId, initializeSubjectSession]);
+
+  // Clean up any pending launch request on unmount or category change
+  useEffect(() => {
+    return () => {
+      if (activeLaunchRef.current) {
+        activeLaunchRef.current.abort();
+      }
+    };
+  }, [selectedCategory]);
 
   // Load past completed assessment for review if review query param is present
   useEffect(() => {
     if (!reviewId) return;
+
+    // If store already has this exact completed attempt loaded and finished, skip redundant fetch
+    if (quizStatus === 'finished' && currentQuiz?.id === reviewId && results) {
+      return;
+    }
 
     let isMounted = true;
     const fetchReview = async () => {
@@ -85,7 +112,7 @@ export const PracticeFlow: React.FC = () => {
         if (isMounted) {
           const loadedQuestions = data.reviewQuestions || data.questions || [];
           setQuiz({
-            id: data.quizId,
+            id: data.quizId || reviewId,
             category: data.category,
             difficulty: data.difficulty,
             language: 'English',
@@ -102,7 +129,10 @@ export const PracticeFlow: React.FC = () => {
         }
       } catch (err: any) {
         console.error('Failed to load review:', err);
-        setErrorMessage(err.message || 'Failed to load assessment review');
+        if (isMounted) {
+          setErrorMessage(err.message || 'Failed to load assessment review');
+          resetQuizState();
+        }
       }
     };
     fetchReview();
@@ -136,8 +166,16 @@ export const PracticeFlow: React.FC = () => {
 
   // Start Generation call using Supabase Question Bank
   const handleLaunchQuiz = async () => {
+    if (activeLaunchRef.current) {
+      activeLaunchRef.current.abort();
+    }
+    const abortController = new AbortController();
+    activeLaunchRef.current = abortController;
+
+    const launchCategory = selectedCategory;
     startQuizGeneration();
     setErrorMessage(null);
+
     try {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json'
@@ -149,12 +187,12 @@ export const PracticeFlow: React.FC = () => {
       const response = await fetch('/api/quiz/generate', {
         method: 'POST',
         headers,
+        signal: abortController.signal,
         body: JSON.stringify({
           category: selectedCategory,
           topic: selectedTopic !== 'All' ? selectedTopic : undefined,
           difficulty: selectedDifficulty,
-          count: selectedCount,
-          
+          count: selectedCount
         })
       });
 
@@ -168,11 +206,21 @@ export const PracticeFlow: React.FC = () => {
         throw new Error('No questions found matching your filter criteria. Please choose another topic or difficulty.');
       }
 
+      // Stale response guard: discard if user navigated to a different subject while fetch was inflight
+      if (selectedCategory !== launchCategory) {
+        return;
+      }
+
       setQuiz(data.quiz);
     } catch (err: any) {
+      if (err.name === 'AbortError') return;
       console.error('[Quiz] Question launch error:', err);
       setErrorMessage(err.message || 'Unable to load questions from Question Bank. Please try again.');
       resetQuizState();
+    } finally {
+      if (activeLaunchRef.current === abortController) {
+        activeLaunchRef.current = null;
+      }
     }
   };
 
@@ -202,11 +250,23 @@ export const PracticeFlow: React.FC = () => {
 
       const data = await response.json();
       finishQuiz(data.results, data.reviewQuestions);
-      // Relying on authStore onSnapshot for userProfile state sync from backend transaction
+      // Synchronize URL with ?review=${currentQuiz.id} so browser refresh directly restores this scorecard
+      setSearchParams({ review: currentQuiz.id }, { replace: true });
     } catch (err: any) {
       console.error('[Quiz] Submit error:', err);
       alert('Error submitting quiz: ' + err.message);
     }
+  };
+
+  const handleBackToHub = () => {
+    resetQuizState();
+    navigate('/practice');
+  };
+
+  const handleRetakeAssessment = () => {
+    setSearchParams({}, { replace: true });
+    resetQuizState();
+    handleLaunchQuiz();
   };
 
   const formatTime = (secs: number) => {
@@ -219,7 +279,11 @@ export const PracticeFlow: React.FC = () => {
   if (quizStatus === 'idle') {
     return (
       <div className="max-w-2xl mx-auto space-y-6">
-        <Link to="/practice" className="text-sm font-semibold text-blue-600 hover:underline flex items-center gap-1 w-max">
+        <Link 
+          to="/practice" 
+          onClick={handleBackToHub}
+          className="text-sm font-semibold text-blue-600 hover:underline flex items-center gap-1 w-max"
+        >
           &larr; Back to Practice Hub
         </Link>
         {/* Header */}
@@ -326,6 +390,9 @@ export const PracticeFlow: React.FC = () => {
 
   // State 3: Active Quiz Workspace
   if (quizStatus === 'active' && currentQuiz) {
+    if (normalizeSubjectSlug(currentQuiz.category) !== selectedCategory) {
+      return null;
+    }
     const questions = currentQuiz.questions;
     const currentQuestion = questions[currentQuestionIndex];
 
@@ -437,6 +504,9 @@ export const PracticeFlow: React.FC = () => {
 
   // State 4: Scoreboard Results
   if (quizStatus === 'finished' && results && currentQuiz) {
+    if (normalizeSubjectSlug(currentQuiz.category) !== selectedCategory) {
+      return null;
+    }
     const isPassing = results.score >= 60;
 
     return (
@@ -572,10 +642,10 @@ export const PracticeFlow: React.FC = () => {
 
         {/* Bottom CTAs */}
         <div className="flex items-center justify-center gap-3 pt-2">
-          <Button variant="outline" size="md" onClick={() => navigate('/practice')}>
+          <Button variant="outline" size="md" onClick={handleBackToHub}>
             Back to Practice Hub
           </Button>
-          <Button variant="primary" size="md" onClick={handleLaunchQuiz}>
+          <Button variant="primary" size="md" onClick={handleRetakeAssessment}>
             Retake Assessment
           </Button>
         </div>
