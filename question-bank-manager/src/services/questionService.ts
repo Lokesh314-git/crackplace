@@ -7,10 +7,23 @@ import {
   PaginatedResult,
   DashboardStats,
   Subject,
-  SubjectInsert
+  SubjectInsert,
+  TopicStat,
+  SubtopicStat
 } from '../types';
 
 const API_URL = import.meta.env.VITE_API_BASE_URL || 'https://crackplace-backend-lfs5.onrender.com';
+
+interface TopicStatCacheItem {
+  stats: TopicStat[];
+  timestamp: number;
+}
+const topicStatsCache = new Map<string, TopicStatCacheItem>();
+const CACHE_TTL_MS = 60 * 1000;
+
+export const clearTopicStatsCache = () => {
+  topicStatsCache.clear();
+};
 
 async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
   const { data: { session } } = await supabase.auth.getSession();
@@ -72,6 +85,7 @@ export const questionService = {
       if (filters.difficulty) query.append('difficulty', filters.difficulty);
       if (filters.question_type) query.append('question_type', filters.question_type);
       if (filters.topic) query.append('topic', filters.topic);
+      if (filters.subtopic) query.append('subtopic', filters.subtopic);
       if (filters.search) query.append('search', filters.search);
       if (filters.sortBy) query.append('sortBy', filters.sortBy);
       if (filters.sortOrder) query.append('sortOrder', filters.sortOrder);
@@ -96,6 +110,9 @@ export const questionService = {
       }
       if (filters.topic && filters.topic !== 'all') {
         query = query.ilike('topic', `%${filters.topic}%`);
+      }
+      if (filters.subtopic && filters.subtopic !== 'all') {
+        query = query.ilike('subtopic', `%${filters.subtopic}%`);
       }
       if (filters.search && filters.search.trim()) {
         const term = filters.search.trim();
@@ -134,10 +151,12 @@ export const questionService = {
 
   async createQuestion(insertData: QuestionInsert): Promise<Question> {
     try {
-      return await fetchWithAuth(`/api/admin/questions`, {
+      const created = await fetchWithAuth(`/api/admin/questions`, {
         method: 'POST',
         body: JSON.stringify(insertData)
       });
+      clearTopicStatsCache();
+      return created;
     } catch (err: any) {
       console.warn(`Backend createQuestion unavailable (${err.message}). Falling back to direct Supabase query.`);
       const formatted = {
@@ -161,16 +180,19 @@ export const questionService = {
         if (error.code === '23505') throw new Error(`A question with ID "${formatted.question_id}" already exists.`);
         throw new Error(`Failed to create question: ${error.message}`);
       }
+      clearTopicStatsCache();
       return data as Question;
     }
   },
 
   async updateQuestion(id: string, updates: QuestionUpdate): Promise<Question> {
     try {
-      return await fetchWithAuth(`/api/admin/questions/${id}`, {
+      const updated = await fetchWithAuth(`/api/admin/questions/${id}`, {
         method: 'PUT',
         body: JSON.stringify(updates)
       });
+      clearTopicStatsCache();
+      return updated;
     } catch (err: any) {
       console.warn(`Backend updateQuestion unavailable (${err.message}). Falling back to direct Supabase query.`);
       const { data, error } = await supabase
@@ -180,6 +202,7 @@ export const questionService = {
         .select()
         .single();
       if (error) throw new Error(`Failed to update question: ${error.message}`);
+      clearTopicStatsCache();
       return data as Question;
     }
   },
@@ -189,11 +212,13 @@ export const questionService = {
       await fetchWithAuth(`/api/admin/questions/${id}`, {
         method: 'DELETE'
       });
+      clearTopicStatsCache();
       return true;
     } catch (err: any) {
       console.warn(`Backend deleteQuestion unavailable (${err.message}). Falling back to direct Supabase query.`);
       const { error } = await supabase.from('questions').delete().eq('id', id);
       if (error) throw new Error(`Failed to delete question: ${error.message}`);
+      clearTopicStatsCache();
       return true;
     }
   },
@@ -208,6 +233,7 @@ export const questionService = {
         method: 'POST',
         body: JSON.stringify({ questions, onConflictOption })
       });
+      clearTopicStatsCache();
       if (onBatchProgress) {
         onBatchProgress(questions.length, questions.length);
       }
@@ -256,6 +282,7 @@ export const questionService = {
         }
       }
 
+      clearTopicStatsCache();
       return { inserted: insertedCount, errors };
     }
   },
@@ -266,21 +293,24 @@ export const questionService = {
     } catch (err: any) {
       console.warn(`Backend getDashboardStats unavailable (${err.message}). Falling back to direct Supabase query.`);
       const { count: totalQuestions } = await supabase.from('questions').select('*', { count: 'exact', head: true });
-      const { data: allQ } = await supabase.from('questions').select('subject, difficulty, question_type');
-      
+
+      const subjects = await this.getSubjects();
       const bySubject: Record<string, number> = {};
-      const byDifficulty: { Easy: number; Medium: number; Hard: number } = { Easy: 0, Medium: 0, Hard: 0 };
-      const byType: { MCQ: number; INTERVIEW: number } = { MCQ: 0, INTERVIEW: 0 };
-
-      for (const q of (allQ || [])) {
-        if (q.subject) bySubject[q.subject] = (bySubject[q.subject] || 0) + 1;
-        if (q.difficulty === 'Easy') byDifficulty.Easy++;
-        else if (q.difficulty === 'Medium') byDifficulty.Medium++;
-        else if (q.difficulty === 'Hard') byDifficulty.Hard++;
-
-        if (q.question_type === 'MCQ') byType.MCQ++;
-        else if (q.question_type === 'INTERVIEW') byType.INTERVIEW++;
+      for (const s of subjects) {
+        bySubject[s.slug] = s.question_count || 0;
       }
+
+      const byDifficulty: { Easy: number; Medium: number; Hard: number } = { Easy: 0, Medium: 0, Hard: 0 };
+      await Promise.all((['Easy', 'Medium', 'Hard'] as const).map(async (diff) => {
+        const { count } = await supabase.from('questions').select('*', { count: 'exact', head: true }).eq('difficulty', diff);
+        byDifficulty[diff] = count || 0;
+      }));
+
+      const byType: { MCQ: number; INTERVIEW: number } = { MCQ: 0, INTERVIEW: 0 };
+      await Promise.all((['MCQ', 'INTERVIEW'] as const).map(async (qType) => {
+        const { count } = await supabase.from('questions').select('*', { count: 'exact', head: true }).eq('question_type', qType);
+        byType[qType] = count || 0;
+      }));
 
       const { data: recent } = await supabase
         .from('questions')
@@ -290,7 +320,7 @@ export const questionService = {
 
       return {
         totalQuestions: totalQuestions || 0,
-        totalSubjects: Object.keys(bySubject).length,
+        totalSubjects: subjects.length,
         bySubject,
         byDifficulty,
         byType,
@@ -320,72 +350,198 @@ export const questionService = {
         { id: '8', slug: 'hr_behavioral', name: 'HR & Behavioral', code_prefix: 'HR', is_active: true }
       ] : subjects;
 
-      const mapped: any[] = [];
-      for (const sub of baseSubjects) {
-        const { count } = await supabase.from('questions').select('*', { count: 'exact', head: true }).eq('subject', sub.slug);
-        
-        const { data: topicsData } = await supabase
-          .from('questions')
-          .select('topic')
-          .eq('subject', sub.slug)
-          .not('topic', 'is', null)
-          .neq('topic', '');
-          
-        const uniqueTopics = new Set((topicsData || []).map((q: any) => q.topic)).size;
-        mapped.push({ ...sub, question_count: count || 0, topic_count: uniqueTopics });
-      }
+      const mapped = await Promise.all(
+        baseSubjects.map(async (sub) => {
+          const { count } = await supabase.from('questions').select('*', { count: 'exact', head: true }).eq('subject', sub.slug);
+          const stats = await this.getTopicStats(sub.slug);
+          return {
+            ...sub,
+            question_count: count || 0,
+            topic_count: stats.length
+          };
+        })
+      );
       return mapped;
     }
   },
 
   async getTopics(subjectSlug: string): Promise<string[]> {
     try {
-      return await fetchWithAuth(`/api/admin/questions/subjects/${subjectSlug}/topics`);
+      const stats = await this.getTopicStats(subjectSlug);
+      return stats.map(s => s.name);
     } catch (err: any) {
-      console.warn(`Backend getTopics unavailable (${err.message}). Falling back to direct Supabase query.`);
-      const { data, error } = await supabase
-        .from('questions')
-        .select('topic')
-        .eq('subject', subjectSlug)
-        .not('topic', 'is', null)
-        .neq('topic', '');
-        
-      if (error) {
-        console.error(`Failed to fetch topics: ${error.message}`);
-        return [];
-      }
-      
-      return Array.from(new Set(data.map((q: any) => q.topic))).sort();
+      console.warn(`Backend getTopics unavailable (${err.message}). Falling back to direct query.`);
+      return [];
     }
   },
 
-  async getTopicStats(subjectSlug: string): Promise<{ name: string; question_count: number }[]> {
-    try {
-      return await fetchWithAuth(`/api/admin/questions/subjects/${subjectSlug}/topic-stats`);
-    } catch (err: any) {
-      console.warn(`Backend getTopicStats unavailable (${err.message}). Falling back to direct Supabase query.`);
-      const { data, error } = await supabase
-        .from('questions')
-        .select('topic')
-        .eq('subject', subjectSlug)
-        .not('topic', 'is', null)
-        .neq('topic', '');
-        
-      if (error) {
-        console.error(`Failed to fetch topic stats: ${error.message}`);
-        return [];
+  async getTopicStats(subjectSlug: string, forceRefresh = false): Promise<TopicStat[]> {
+    if (!forceRefresh) {
+      const cached = topicStatsCache.get(subjectSlug);
+      if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+        return cached.stats;
       }
-      
-      const counts: Record<string, number> = {};
-      for (const q of data) {
-        if (q.topic) {
-          counts[q.topic] = (counts[q.topic] || 0) + 1;
+    }
+
+    // 1. Try Backend API
+    try {
+      const res = await fetchWithAuth(`/api/admin/questions/subjects/${subjectSlug}/topic-stats?force=${forceRefresh}`);
+      if (Array.isArray(res) && res.length > 0) {
+        topicStatsCache.set(subjectSlug, { stats: res, timestamp: Date.now() });
+        return res;
+      }
+    } catch {
+      // Backend not available or failed, fall back to direct Supabase
+    }
+
+    // 2. Try Supabase RPC get_subject_topic_stats
+    try {
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('get_subject_topic_stats', {
+        p_subject: subjectSlug
+      });
+      if (!rpcErr && Array.isArray(rpcData) && rpcData.length > 0) {
+        const stats: TopicStat[] = rpcData.map((d: any) => ({
+          name: d.name,
+          question_count: Number(d.question_count)
+        }));
+        topicStatsCache.set(subjectSlug, { stats, timestamp: Date.now() });
+        return stats;
+      }
+    } catch {
+      // RPC not yet applied, fallback to high-speed skip-scan
+    }
+
+    // 3. Fallback: Indexed skip-scan to discover ALL distinct topics without downloading 30k rows
+    try {
+      const topics: string[] = [];
+      let lastTopic: string | null = null;
+      while (true) {
+        let q = supabase
+          .from('questions')
+          .select('topic')
+          .eq('subject', subjectSlug)
+          .not('topic', 'is', null)
+          .neq('topic', '')
+          .order('topic', { ascending: true })
+          .limit(1);
+
+        if (lastTopic) {
+          q = q.gt('topic', lastTopic);
+        }
+        const { data, error } = await q;
+        if (error || !data || data.length === 0) break;
+        const foundTopic = data[0].topic;
+        if (!foundTopic) break;
+        lastTopic = foundTopic;
+        topics.push(foundTopic);
+      }
+
+      // Check if there are questions where topic is missing but subtopic is present
+      let lastSubtopic: string | null = null;
+      while (true) {
+        let q = supabase
+          .from('questions')
+          .select('subtopic')
+          .eq('subject', subjectSlug)
+          .or('topic.is.null,topic.eq.""')
+          .not('subtopic', 'is', null)
+          .neq('subtopic', '')
+          .order('subtopic', { ascending: true })
+          .limit(1);
+
+        if (lastSubtopic) {
+          q = q.gt('subtopic', lastSubtopic);
+        }
+        const { data, error } = await q;
+        if (error || !data || data.length === 0) break;
+        const foundSubtopic = data[0].subtopic;
+        if (!foundSubtopic) break;
+        lastSubtopic = foundSubtopic;
+        if (!topics.includes(foundSubtopic)) {
+          topics.push(foundSubtopic);
         }
       }
-      
-      return Object.entries(counts)
-        .map(([name, count]) => ({ name, question_count: count }))
-        .sort((a, b) => a.name.localeCompare(b.name));
+
+      // Exact count using parallel HEAD requests (0-byte payload per topic)
+      const stats = await Promise.all(
+        topics.map(async (name) => {
+          const { count } = await supabase
+            .from('questions')
+            .select('*', { count: 'exact', head: true })
+            .eq('subject', subjectSlug)
+            .or(`topic.eq."${name}",and(topic.is.null,subtopic.eq."${name}"),and(topic.eq."",subtopic.eq."${name}")`);
+          return { name, question_count: count || 0 };
+        })
+      );
+
+      const sorted = stats.sort((a, b) => a.name.localeCompare(b.name));
+      topicStatsCache.set(subjectSlug, { stats: sorted, timestamp: Date.now() });
+      return sorted;
+    } catch (err: any) {
+      console.error(`Failed to fetch topic stats: ${err.message}`);
+      return [];
+    }
+  },
+
+  async getSubtopicStats(subjectSlug: string, topicName: string): Promise<SubtopicStat[]> {
+    // 1. Try Supabase RPC
+    try {
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('get_subject_subtopic_stats', {
+        p_subject: subjectSlug,
+        p_topic: topicName
+      });
+      if (!rpcErr && Array.isArray(rpcData) && rpcData.length > 0) {
+        return rpcData.map((d: any) => ({
+          name: d.subtopic,
+          question_count: Number(d.question_count)
+        }));
+      }
+    } catch {
+      // Fallback
+    }
+
+    // 2. Skip-scan fallback for subtopics under a topic
+    try {
+      const subtopics: string[] = [];
+      let lastSubtopic: string | null = null;
+      while (true) {
+        let q = supabase
+          .from('questions')
+          .select('subtopic')
+          .eq('subject', subjectSlug)
+          .eq('topic', topicName)
+          .not('subtopic', 'is', null)
+          .neq('subtopic', '')
+          .order('subtopic', { ascending: true })
+          .limit(1);
+
+        if (lastSubtopic) {
+          q = q.gt('subtopic', lastSubtopic);
+        }
+        const { data, error } = await q;
+        if (error || !data || data.length === 0) break;
+        const foundSubtopic = data[0].subtopic;
+        if (!foundSubtopic) break;
+        lastSubtopic = foundSubtopic;
+        subtopics.push(foundSubtopic);
+      }
+
+      const results = await Promise.all(
+        subtopics.map(async (name) => {
+          const { count } = await supabase
+            .from('questions')
+            .select('*', { count: 'exact', head: true })
+            .eq('subject', subjectSlug)
+            .eq('topic', topicName)
+            .eq('subtopic', name);
+          return { name, question_count: count || 0 };
+        })
+      );
+
+      return results.sort((a, b) => a.name.localeCompare(b.name));
+    } catch (err: any) {
+      console.error(`Failed to fetch subtopics for topic ${topicName}:`, err);
+      return [];
     }
   },
 

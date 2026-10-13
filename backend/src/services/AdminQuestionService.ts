@@ -41,6 +41,9 @@ export class AdminQuestionService {
     if (filters.topic && filters.topic !== 'all') {
       query = query.ilike('topic', `%${filters.topic}%`);
     }
+    if (filters.subtopic && filters.subtopic !== 'all') {
+      query = query.ilike('subtopic', `%${filters.subtopic}%`);
+    }
     if (filters.search && filters.search.trim()) {
       const term = filters.search.trim();
       query = query.or(`question_id.ilike.%${term}%,question.ilike.%${term}%,topic.ilike.%${term}%,subtopic.ilike.%${term}%`);
@@ -221,64 +224,176 @@ export class AdminQuestionService {
       ];
     }
 
-    const mapped: any[] = [];
-    for (const sub of subjects || []) {
-      const { count } = await supabase.from('questions').select('*', { count: 'exact', head: true }).eq('subject', sub.slug);
-      
-      const { data: topicsData } = await supabase
-        .from('questions')
-        .select('topic')
-        .eq('subject', sub.slug)
-        .not('topic', 'is', null)
-        .neq('topic', '');
-        
-      const uniqueTopics = new Set((topicsData || []).map((q: any) => q.topic)).size;
-
-      mapped.push({ ...sub, question_count: count || 0, topic_count: uniqueTopics });
-    }
+    const mapped = await Promise.all(
+      (subjects || []).map(async (sub: any) => {
+        const { count } = await supabase.from('questions').select('*', { count: 'exact', head: true }).eq('subject', sub.slug);
+        const stats = await this.getTopicStats(sub.slug);
+        return {
+          ...sub,
+          question_count: count || 0,
+          topic_count: stats.length
+        };
+      })
+    );
     return mapped;
   }
 
   static async getTopics(subjectSlug: string) {
-    const { data, error } = await supabase
-      .from('questions')
-      .select('topic')
-      .eq('subject', subjectSlug)
-      .not('topic', 'is', null)
-      .neq('topic', '');
-      
-    if (error) {
-       console.error(`Failed to fetch topics: ${error.message}`);
-       return [];
+    try {
+      const stats = await this.getTopicStats(subjectSlug);
+      return stats.map(s => s.name);
+    } catch (error: any) {
+      console.error(`Failed to fetch topics: ${error.message}`);
+      return [];
     }
-    
-    const uniqueTopics = Array.from(new Set(data.map((q: any) => q.topic))).sort();
-    return uniqueTopics;
   }
 
   static async getTopicStats(subjectSlug: string) {
-    const { data, error } = await supabase
-      .from('questions')
-      .select('topic')
-      .eq('subject', subjectSlug)
-      .not('topic', 'is', null)
-      .neq('topic', '');
-      
-    if (error) {
-       console.error(`Failed to fetch topic stats: ${error.message}`);
-       return [];
-    }
-    
-    const counts: Record<string, number> = {};
-    for (const q of data) {
-      if (q.topic) {
-        counts[q.topic] = (counts[q.topic] || 0) + 1;
+    // 1. Try Supabase RPC
+    try {
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('get_subject_topic_stats', {
+        p_subject: subjectSlug
+      });
+      if (!rpcErr && Array.isArray(rpcData) && rpcData.length > 0) {
+        return rpcData.map((d: any) => ({
+          name: d.name,
+          question_count: Number(d.question_count)
+        }));
       }
+    } catch {
+      // Fallback
     }
-    
-    return Object.entries(counts)
-      .map(([name, count]) => ({ name, question_count: count }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+
+    // 2. Skip-scan fallback for complete distinct topic discovery across 30k+ rows
+    try {
+      const topics: string[] = [];
+      let lastTopic: string | null = null;
+      while (true) {
+        let q = supabase
+          .from('questions')
+          .select('topic')
+          .eq('subject', subjectSlug)
+          .not('topic', 'is', null)
+          .neq('topic', '')
+          .order('topic', { ascending: true })
+          .limit(1);
+
+        if (lastTopic) {
+          q = q.gt('topic', lastTopic);
+        }
+        const { data, error } = await q;
+        if (error || !data || data.length === 0) break;
+        const foundTopic = data[0].topic;
+        if (!foundTopic) break;
+        lastTopic = foundTopic;
+        topics.push(foundTopic);
+      }
+
+      // Check for orphan subtopics without topic
+      let lastSubtopic: string | null = null;
+      while (true) {
+        let q = supabase
+          .from('questions')
+          .select('subtopic')
+          .eq('subject', subjectSlug)
+          .or('topic.is.null,topic.eq.""')
+          .not('subtopic', 'is', null)
+          .neq('subtopic', '')
+          .order('subtopic', { ascending: true })
+          .limit(1);
+
+        if (lastSubtopic) {
+          q = q.gt('subtopic', lastSubtopic);
+        }
+        const { data, error } = await q;
+        if (error || !data || data.length === 0) break;
+        const foundSubtopic = data[0].subtopic;
+        if (!foundSubtopic) break;
+        lastSubtopic = foundSubtopic;
+        if (!topics.includes(foundSubtopic)) {
+          topics.push(foundSubtopic);
+        }
+      }
+
+      // Parallel exact count using HEAD requests (0-byte payload)
+      const stats = await Promise.all(
+        topics.map(async (name) => {
+          const { count } = await supabase
+            .from('questions')
+            .select('*', { count: 'exact', head: true })
+            .eq('subject', subjectSlug)
+            .or(`topic.eq."${name}",and(topic.is.null,subtopic.eq."${name}"),and(topic.eq."",subtopic.eq."${name}")`);
+          return { name, question_count: count || 0 };
+        })
+      );
+
+      return stats.sort((a, b) => a.name.localeCompare(b.name));
+    } catch (error: any) {
+      console.error(`Failed to fetch topic stats: ${error.message}`);
+      return [];
+    }
+  }
+
+  static async getSubtopicStats(subjectSlug: string, topicName: string) {
+    // 1. Try Supabase RPC
+    try {
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('get_subject_subtopic_stats', {
+        p_subject: subjectSlug,
+        p_topic: topicName
+      });
+      if (!rpcErr && Array.isArray(rpcData) && rpcData.length > 0) {
+        return rpcData.map((d: any) => ({
+          name: d.subtopic,
+          question_count: Number(d.question_count)
+        }));
+      }
+    } catch {
+      // Fallback
+    }
+
+    // 2. Skip-scan fallback for subtopics under a topic
+    try {
+      const subtopics: string[] = [];
+      let lastSubtopic: string | null = null;
+      while (true) {
+        let q = supabase
+          .from('questions')
+          .select('subtopic')
+          .eq('subject', subjectSlug)
+          .eq('topic', topicName)
+          .not('subtopic', 'is', null)
+          .neq('subtopic', '')
+          .order('subtopic', { ascending: true })
+          .limit(1);
+
+        if (lastSubtopic) {
+          q = q.gt('subtopic', lastSubtopic);
+        }
+        const { data, error } = await q;
+        if (error || !data || data.length === 0) break;
+        const foundSubtopic = data[0].subtopic;
+        if (!foundSubtopic) break;
+        lastSubtopic = foundSubtopic;
+        subtopics.push(foundSubtopic);
+      }
+
+      const results = await Promise.all(
+        subtopics.map(async (name) => {
+          const { count } = await supabase
+            .from('questions')
+            .select('*', { count: 'exact', head: true })
+            .eq('subject', subjectSlug)
+            .eq('topic', topicName)
+            .eq('subtopic', name);
+          return { name, question_count: count || 0 };
+        })
+      );
+
+      return results.sort((a, b) => a.name.localeCompare(b.name));
+    } catch (err: any) {
+      console.error(`Failed to fetch subtopics for topic ${topicName}:`, err);
+      return [];
+    }
   }
 
   static async createSubject(subject: any) {

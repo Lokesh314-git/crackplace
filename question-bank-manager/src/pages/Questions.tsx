@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
   Search,
   Download,
@@ -24,6 +24,8 @@ import { DEFAULT_SUBJECTS, getSubjectDetails } from '../constants/subjects';
 
 export const Questions: React.FC = () => {
   const { subjectSlug, topicName } = useParams<{ subjectSlug?: string, topicName?: string }>();
+  const [searchParams] = useSearchParams();
+  const subtopicParam = searchParams.get('subtopic');
   
   const [questions, setQuestions] = useState<Question[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -37,6 +39,7 @@ export const Questions: React.FC = () => {
     pageSize: 20,
     subject: subjectSlug || 'all',
     topic: topicName || 'all',
+    subtopic: subtopicParam || 'all',
     difficulty: 'all',
     question_type: 'all',
     search: '',
@@ -153,17 +156,31 @@ export const Questions: React.FC = () => {
             <span>/</span>
             <Link to={`/subjects/${subjectSlug}`} className="hover:text-indigo-600 transition-colors">{subjectName}</Link>
             <span>/</span>
-            <span className="text-slate-900 dark:text-slate-200">{topicName}</span>
+            {subtopicParam ? (
+              <>
+                <Link to={`/subjects/${subjectSlug}/topics/${encodeURIComponent(topicName || '')}`} className="hover:text-indigo-600 transition-colors">{topicName}</Link>
+                <span>/</span>
+                <span className="text-slate-900 dark:text-slate-200">{subtopicParam}</span>
+              </>
+            ) : (
+              <span className="text-slate-900 dark:text-slate-200">{topicName}</span>
+            )}
           </div>
         )}
 
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
-              {isTopicContext ? `${topicName} Questions` : 'Question Bank Repository'}
+              {subtopicParam
+                ? `${subtopicParam} Questions`
+                : isTopicContext
+                ? `${topicName} Questions`
+                : 'Question Bank Repository'}
             </h1>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              {isTopicContext 
+              {subtopicParam
+                ? `Questions for ${subjectName} > ${topicName} > ${subtopicParam} (${totalCount.toLocaleString()} total)`
+                : isTopicContext 
                 ? `Manage questions for ${subjectName} > ${topicName} (${totalCount.toLocaleString()} total)`
                 : `Manage, filter, search, and export questions stored in Supabase PostgreSQL (${totalCount.toLocaleString()} total)`
               }
@@ -393,8 +410,11 @@ export const Questions: React.FC = () => {
                       <td className="py-3 px-4 font-medium text-slate-800 dark:text-slate-200 whitespace-nowrap">
                         {subjectInfo.name}
                       </td>
-                      <td className="py-3 px-4 text-slate-500 max-w-[140px] truncate">
-                        {q.topic || '—'}
+                      <td className="py-3 px-4 max-w-[150px]">
+                        <div className="font-medium text-slate-800 dark:text-slate-200 truncate">{q.topic || '—'}</div>
+                        {q.subtopic && (
+                          <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono truncate">{q.subtopic}</div>
+                        )}
                       </td>
                       <td className="py-3 px-4 whitespace-nowrap">
                         <Badge

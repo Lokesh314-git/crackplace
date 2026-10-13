@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { FaUserPlus, FaVideo, FaCheck, FaClock, FaGift } from 'react-icons/fa6';
+import { PromotionRewardModal } from '../components/PromotionRewardModal';
 
 export const InvitePromote: React.FC = () => {
   const { userProfile, token } = useAuthStore();
@@ -12,6 +13,7 @@ export const InvitePromote: React.FC = () => {
   const [videoUrl, setVideoUrl] = useState('');
   const [platform, setPlatform] = useState('youtube');
   const [submitting, setSubmitting] = useState(false);
+  const [selectedPromoModal, setSelectedPromoModal] = useState<any | null>(null);
   
   // Dummy data loading for now to test frontend structure
   useEffect(() => {
@@ -41,7 +43,13 @@ export const InvitePromote: React.FC = () => {
       });
       if (response.ok) {
         const data = await response.json();
-        setPromotions(data.promotions || []);
+        const updatedList = data.promotions || [];
+        setPromotions(updatedList);
+        setSelectedPromoModal((prev: any) => {
+          if (!prev) return null;
+          const fresh = updatedList.find((p: any) => p.id === prev.id);
+          return fresh || prev;
+        });
       }
     } catch (err) {
       console.error(err);
@@ -281,52 +289,103 @@ export const InvitePromote: React.FC = () => {
                       {promotions.length === 0 ? (
                         <div className="text-xs text-slate-400">No submissions yet.</div>
                       ) : (
-                        <div className="space-y-2">
-                          {promotions.map((promo) => (
-                            <div key={promo.id} className="bg-white border border-slate-200 rounded-lg p-3">
-                              <div className="flex justify-between items-start mb-2">
-                                <a href={promo.videoUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline truncate max-w-[200px]">
-                                  {promo.videoUrl}
-                                </a>
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                  promo.status === 'pending' ? 'bg-amber-100 text-amber-700' :
-                                  promo.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
-                                  'bg-red-100 text-red-700'
-                                }`}>
-                                  {promo.status.toUpperCase()}
-                                </span>
-                              </div>
-                              {promo.adminMessage && (
-                                <div className="text-xs bg-slate-50 border border-slate-100 p-2 rounded text-slate-600 mt-2">
-                                  <strong>Admin:</strong> {promo.adminMessage}
+                        <div className="space-y-3">
+                          {promotions.map((promo) => {
+                            const rewardPackage = promo.rewardPackage || promo.rewardedItems;
+                            const rewardStatus = promo.rewardStatus || (rewardPackage ? 'claimed' : 'none');
+
+                            return (
+                              <div key={promo.id} className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-2xs">
+                                <div className="flex justify-between items-start gap-2">
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-slate-100 text-slate-700">
+                                        {promo.platform}
+                                      </span>
+                                      <span className="text-[11px] text-slate-400">
+                                        {new Date(promo.createdAt).toLocaleDateString()}
+                                      </span>
+                                    </div>
+                                    <a 
+                                      href={promo.videoUrl} 
+                                      target="_blank" 
+                                      rel="noreferrer" 
+                                      className="text-xs text-blue-600 hover:text-blue-700 hover:underline font-medium break-all"
+                                    >
+                                      {promo.videoUrl}
+                                    </a>
+                                  </div>
+                                  
+                                  <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shrink-0 ${
+                                    promo.status === 'pending' ? 'bg-amber-100 text-amber-700 border border-amber-200' :
+                                    promo.status === 'approved' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' :
+                                    'bg-red-100 text-red-700 border border-red-200'
+                                  }`}>
+                                    {promo.status}
+                                  </span>
                                 </div>
-                              )}
-                              {promo.rewardedItems && (
-                                <details className="mt-2 group">
-                                  <summary className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 cursor-pointer list-none select-none hover:text-emerald-700">
-                                    <FaGift /> Rewards Granted
-                                    <span className="text-[10px] text-emerald-500 group-open:rotate-180 transition-transform ml-1">▼</span>
-                                  </summary>
-                                  <div className="mt-2 pl-3 ml-1.5 text-xs text-slate-600 space-y-1 border-l-2 border-emerald-100">
-                                    {typeof promo.rewardedItems === 'object' ? (
-                                      <>
-                                        {promo.rewardedItems.coins > 0 && <div>• +{promo.rewardedItems.coins} Coins</div>}
-                                        {promo.rewardedItems.cashAmount > 0 && <div>• {promo.rewardedItems.cashAmount} {promo.rewardedItems.currency || 'INR'}</div>}
-                                        {promo.rewardedItems.cosmeticIds?.length > 0 && (
-                                          <div>• {promo.rewardedItems.cosmeticIds.length} Cosmetic(s) Unlocked</div>
-                                        )}
-                                        {(!promo.rewardedItems.coins && !promo.rewardedItems.cashAmount && (!promo.rewardedItems.cosmeticIds || promo.rewardedItems.cosmeticIds.length === 0)) && (
-                                          <div>• Custom rewards applied</div>
-                                        )}
-                                      </>
-                                    ) : (
-                                      <div>• Rewards successfully added to your account.</div>
+
+                                {promo.adminMessage && (
+                                  <div className="text-xs bg-slate-50 border border-slate-100 p-2.5 rounded-lg text-slate-600">
+                                    <strong className="text-slate-700">Admin Note:</strong> {promo.adminMessage}
+                                  </div>
+                                )}
+
+                                {/* Reward Status & Action */}
+                                {promo.status === 'approved' && (
+                                  <div className="pt-2.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                                    <div className="text-xs">
+                                      <span className="font-semibold text-slate-700">Reward: </span>
+                                      {rewardStatus === 'claimable' && (
+                                        <span className="text-emerald-600 font-bold">Ready to claim!</span>
+                                      )}
+                                      {rewardStatus === 'claimed' && (
+                                        <span className="text-slate-500 font-medium">Claimed & Added to account</span>
+                                      )}
+                                      {rewardStatus === 'none' && (
+                                        <span className="text-slate-400">Pending admin assignment</span>
+                                      )}
+                                    </div>
+
+                                    {rewardStatus === 'claimable' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedPromoModal(promo)}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-sm shadow-emerald-600/20 transition-all cursor-pointer"
+                                      >
+                                        <FaGift className="w-3 h-3 animate-bounce" />
+                                        <span>Rewards Granted</span>
+                                        <span className="bg-white/25 px-1.5 py-0.2 rounded text-[10px] uppercase font-mono font-bold ml-1">
+                                          CLAIMABLE
+                                        </span>
+                                      </button>
+                                    )}
+
+                                    {rewardStatus === 'claimed' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedPromoModal(promo)}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition-colors cursor-pointer"
+                                      >
+                                        <FaCheck className="w-3 h-3 text-emerald-600" />
+                                        <span>Rewards Granted</span>
+                                        <span className="bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded text-[10px] uppercase font-mono font-bold ml-1">
+                                          CLAIMED
+                                        </span>
+                                      </button>
+                                    )}
+
+                                    {rewardStatus === 'none' && (
+                                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-400 bg-slate-50 border border-slate-200">
+                                        <FaClock className="w-2.5 h-2.5 text-slate-400" />
+                                        <span>No Reward Package</span>
+                                      </span>
                                     )}
                                   </div>
-                                </details>
-                              )}
-                            </div>
-                          ))}
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -368,6 +427,21 @@ export const InvitePromote: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Promotion Reward Details & Claim Modal */}
+      {selectedPromoModal && (
+        <PromotionRewardModal
+          isOpen={true}
+          promotion={selectedPromoModal}
+          cashRewards={cashRewards}
+          token={token}
+          onClose={() => setSelectedPromoModal(null)}
+          onClaimSuccess={() => {
+            fetchPromotions();
+            fetchCashRewards();
+          }}
+        />
+      )}
     </div>
   );
 };

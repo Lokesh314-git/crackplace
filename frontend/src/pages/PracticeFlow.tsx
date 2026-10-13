@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useQuizStore } from '../store/quizStore';
 import { useAuthStore } from '../store/authStore';
 import { 
@@ -39,6 +39,8 @@ const COUNTS = [5, 10, 15, 20];
 
 export const PracticeFlow: React.FC = () => {
   const { subject } = useParams();
+  const [searchParams] = useSearchParams();
+  const reviewId = searchParams.get('review');
   const navigate = useNavigate();
   const { token } = useAuthStore();
   const {
@@ -66,6 +68,46 @@ export const PracticeFlow: React.FC = () => {
   const [selectedCount, setSelectedCount] = useState(5);
   // Local UI status
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Load past completed assessment for review if review query param is present
+  useEffect(() => {
+    if (!reviewId) return;
+
+    let isMounted = true;
+    const fetchReview = async () => {
+      try {
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch(`/api/quiz/${reviewId}/review`, { headers });
+        if (!res.ok) throw new Error('Could not load assessment review');
+        const data = await res.json();
+        if (isMounted) {
+          const loadedQuestions = data.reviewQuestions || data.questions || [];
+          setQuiz({
+            id: data.quizId,
+            category: data.category,
+            difficulty: data.difficulty,
+            language: 'English',
+            company: 'General',
+            questions: loadedQuestions,
+            createdAt: data.createdAt
+          });
+          if (data.userAnswers) {
+            Object.entries(data.userAnswers).forEach(([k, v]) => {
+              selectOption(Number(k), Number(v));
+            });
+          }
+          finishQuiz(data.results, loadedQuestions);
+        }
+      } catch (err: any) {
+        console.error('Failed to load review:', err);
+        setErrorMessage(err.message || 'Failed to load assessment review');
+      }
+    };
+    fetchReview();
+    return () => { isMounted = false; };
+  }, [reviewId, token]);
 
 
   // Load available topics whenever category changes
@@ -159,7 +201,7 @@ export const PracticeFlow: React.FC = () => {
       }
 
       const data = await response.json();
-      finishQuiz(data.results);
+      finishQuiz(data.results, data.reviewQuestions);
       // Relying on authStore onSnapshot for userProfile state sync from backend transaction
     } catch (err: any) {
       console.error('[Quiz] Submit error:', err);
@@ -452,39 +494,76 @@ export const PracticeFlow: React.FC = () => {
         >
           <div className="space-y-4">
             {currentQuiz.questions.map((q, idx) => {
-              const selectedIdx = selectedAnswers[idx];
-              const isCorrect = selectedIdx === q.correctOptionIndex;
+              const selectedIdx = selectedAnswers[idx] ?? q.userAnswerIndex;
+              const hasAnswered = selectedIdx !== undefined && selectedIdx !== null && selectedIdx >= 0;
+              const isCorrect = q.isCorrect !== undefined
+                ? q.isCorrect
+                : (hasAnswered && typeof q.correctOptionIndex === 'number' && selectedIdx === q.correctOptionIndex);
+
+              // Correct Answer text resolution
+              let displayCorrectAnswer = '';
+              if (q.correctAnswer && typeof q.correctAnswer === 'string' && q.correctAnswer.trim().length > 0) {
+                displayCorrectAnswer = q.correctAnswer.trim();
+              } else if (q.options && typeof q.correctOptionIndex === 'number' && q.options[q.correctOptionIndex]) {
+                displayCorrectAnswer = q.options[q.correctOptionIndex];
+              }
+
+              // User Answer text resolution
+              let displayUserAnswer = 'Not answered';
+              if (hasAnswered) {
+                if (q.userAnswerText) {
+                  displayUserAnswer = q.userAnswerText;
+                } else if (q.options && q.options[selectedIdx]) {
+                  displayUserAnswer = q.options[selectedIdx];
+                } else {
+                  displayUserAnswer = `Option ${Number(selectedIdx) + 1}`;
+                }
+              }
+
+              const explanationText = q.explanation && q.explanation.trim().length > 0
+                ? q.explanation.trim()
+                : 'Explanation not available for this question yet';
 
               return (
-                <div key={idx} className="p-4 rounded-lg bg-slate-50 border border-slate-200 space-y-2 text-xs">
+                <div key={idx} className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3 text-xs shadow-xs">
                   <div className="flex items-start justify-between gap-3">
-                    <p className="font-semibold text-slate-900">
+                    <p className="font-semibold text-slate-900 leading-relaxed text-sm">
                       {idx + 1}. {q.questionText}
                     </p>
-                    <Badge variant={isCorrect ? 'success' : 'error'} size="sm" className="shrink-0">
+                    <Badge variant={isCorrect ? 'success' : 'error'} size="sm" className="shrink-0 font-medium">
                       {isCorrect ? 'Correct' : 'Incorrect'}
                     </Badge>
                   </div>
 
-                  <div className="space-y-1 text-slate-700 pt-1">
-                    <p>
-                      Your Answer: <strong className={isCorrect ? 'text-emerald-700' : 'text-red-700'}>
-                        {selectedIdx !== undefined ? q.options[selectedIdx] : 'Unanswered'}
+                  <div className="space-y-1.5 text-slate-700 pt-1">
+                    <p className="flex items-baseline gap-1.5 flex-wrap">
+                      <span className="text-slate-500">Your Answer:</span>
+                      <strong className={`font-semibold ${!hasAnswered ? 'text-slate-500 italic' : isCorrect ? 'text-emerald-700' : 'text-red-700'}`}>
+                        {displayUserAnswer}
                       </strong>
                     </p>
-                    {!isCorrect && (
-                      <p>
-                        Correct Answer: <strong className="text-emerald-700">{q.options[q.correctOptionIndex]}</strong>
-                      </p>
-                    )}
+                    
+                    <p className="flex items-baseline gap-1.5 flex-wrap">
+                      <span className="text-slate-500">Correct Answer:</span>
+                      {displayCorrectAnswer ? (
+                        <strong className="text-emerald-700 font-semibold">
+                          {displayCorrectAnswer}
+                        </strong>
+                      ) : (
+                        <span className="text-amber-600 italic text-[11px]">
+                          Correct answer data currently unavailable for this question (ID: {q.id || `Q${idx + 1}`})
+                        </span>
+                      )}
+                    </p>
                   </div>
 
-                  {q.explanation && (
-                    <div className="p-2.5 rounded bg-white border border-slate-200 text-slate-600 text-[11px] leading-relaxed mt-2">
-                      <strong className="text-slate-800">Explanation: </strong>
-                      {q.explanation}
-                    </div>
-                  )}
+                  {/* Step-by-step Solution Card */}
+                  <div className="p-3 rounded-lg bg-white border border-slate-200 text-slate-600 text-xs leading-relaxed mt-2.5">
+                    <strong className="text-slate-800 block mb-1">Explanation:</strong>
+                    <p className="whitespace-pre-line text-slate-700 font-normal">
+                      {explanationText}
+                    </p>
+                  </div>
                 </div>
               );
             })}

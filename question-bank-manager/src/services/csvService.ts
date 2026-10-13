@@ -5,7 +5,6 @@ import {
   Question
 } from '../types';
 import { validateCSVRow } from '../utils/validation';
-import { normalizeText } from '../utils/normalization';
 
 export const CSV_EXPECTED_HEADERS = [
   'subject',
@@ -64,7 +63,7 @@ export const csvService = {
 
             for (let i = 0; i < total; i++) {
               const rawRow = rows[i];
-              // Validate schema & values
+              // Validate schema & values (handles intra-CSV duplicates via seenQuestionIds & seenQuestionTexts)
               const validation = validateCSVRow(
                 rawRow, 
                 i + 1, 
@@ -76,27 +75,6 @@ export const csvService = {
                 defaultSubject,
                 defaultTopic
               );
-
-              // Check for intra-CSV duplicates
-              const qId = (rawRow.id || rawRow.question_id || '').trim().toUpperCase();
-              const normText = normalizeText(rawRow.question || '');
-
-              let isDuplicate = false;
-              if (qId && seenQuestionIds.has(qId)) {
-                isDuplicate = true;
-                validation.status = 'duplicate';
-                validation.errors.push(`Duplicate Question ID "${qId}" within this CSV file (already found earlier in row).`);
-              } else if (qId) {
-                seenQuestionIds.add(qId);
-              }
-
-              if (normText && seenQuestionTexts.has(normText)) {
-                if (!isDuplicate) {
-                  validation.warnings.push('Similar question text already found in an earlier row in this CSV.');
-                }
-              } else if (normText) {
-                seenQuestionTexts.add(normText);
-              }
 
               // Update counters
               if (validation.status === 'valid') validCount++;

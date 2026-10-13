@@ -139,4 +139,106 @@ describe('Security & Vulnerability Remediation Suite (Phase 3 & Phase 6)', () =>
       expect(snap2.data().count).toBe(2);
     });
   });
+
+  describe('5. Assessment Review Security & Answer Key Revelation', () => {
+    it('should block review access for active unsubmitted assessments', async () => {
+      const activeQuizRef = await db.collection('quizzes').add({
+        userId: 'student_owner_456',
+        category: 'quantitative_aptitude',
+        difficulty: 'medium',
+        questions: [
+          {
+            id: 'q_active_1',
+            questionText: 'Active question 1',
+            options: ['A', 'B', 'C', 'D'],
+            correctOptionIndex: 1,
+            explanation: 'B is correct because...'
+          }
+        ],
+        results: null, // Active!
+        createdAt: new Date().toISOString()
+      });
+
+      const res = await request(app).get(`/api/quiz/${activeQuizRef.id}/review`);
+      expect(res.status).toBe(403);
+      expect(res.body.error).toMatch(/cannot review an active assessment/i);
+    });
+
+    it('should allow completed assessment review with canonical answers and explanations', async () => {
+      const completedQuizRef = await db.collection('quizzes').add({
+        userId: 'guest_test_owner',
+        category: 'quantitative_aptitude',
+        difficulty: 'medium',
+        questions: [
+          {
+            id: 'q_comp_1',
+            questionText: 'A trader marks goods 40% above cost price and allows a 15% discount. Gain %?',
+            options: ['16%', '18%', '19%', '21%'],
+            correctOptionIndex: 2,
+            explanation: 'Let CP = 100. MP = 140. SP = 140 * 0.85 = 119. Gain = 19%.'
+          }
+        ],
+        results: {
+          score: 100,
+          correctAnswers: 1,
+          timeTakenSeconds: 25,
+          xpEarned: 70,
+          coinsEarned: 35
+        },
+        userAnswers: { '0': 2 },
+        createdAt: new Date().toISOString()
+      });
+
+      const res = await request(app).get(`/api/quiz/${completedQuizRef.id}/review`);
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.reviewQuestions).toBeDefined();
+      expect(res.body.reviewQuestions.length).toBe(1);
+
+      const reviewedQ = res.body.reviewQuestions[0];
+      expect(reviewedQ.questionText).toContain('A trader marks goods');
+      expect(reviewedQ.correctOptionIndex).toBe(2);
+      expect(reviewedQ.correctAnswer).toBe('19%');
+      expect(reviewedQ.userAnswerText).toBe('19%');
+      expect(reviewedQ.isCorrect).toBe(true);
+      expect(reviewedQ.explanation).toContain('Gain = 19%');
+    });
+
+    it('should return reviewQuestions in submit response for immediate scorecard review', async () => {
+      const submitQuizRef = await db.collection('quizzes').add({
+        userId: 'guest_submitter',
+        category: 'quantitative_aptitude',
+        difficulty: 'medium',
+        questions: [
+          {
+            id: 'q_sub_1',
+            questionText: 'Simran profit share question',
+            options: ['$12,000', '$13,000', '$14,000', '$15,000'],
+            correctOptionIndex: 1,
+            explanation: 'Ratio is 1:1, so Simran gets $13,000.'
+          }
+        ],
+        results: null,
+        createdAt: new Date().toISOString()
+      });
+
+      const res = await request(app)
+        .post(`/api/quiz/${submitQuizRef.id}/submit`)
+        .send({
+          answers: { '0': 2 }, // User submitted option 2 ($14,000 - incorrect)
+          timeSpentSeconds: 40
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.results.correctAnswers).toBe(0);
+      expect(res.body.reviewQuestions).toBeDefined();
+      expect(res.body.reviewQuestions.length).toBe(1);
+
+      const reviewItem = res.body.reviewQuestions[0];
+      expect(reviewItem.isCorrect).toBe(false);
+      expect(reviewItem.userAnswerText).toBe('$14,000');
+      expect(reviewItem.correctAnswer).toBe('$13,000');
+      expect(reviewItem.explanation).toContain('Ratio is 1:1');
+    });
+  });
 });

@@ -9,11 +9,12 @@ import {
   FaNetworkWired,
   FaBrain,
   FaFont,
-  FaCirclePlay
+  FaCirclePlay,
+  FaEye
 } from 'react-icons/fa6';
 import { Badge } from '../components/ui';
 import { useAuthStore } from '../store/authStore';
-import { SUBJECT_LIST } from '../constants/subjects';
+import { SUBJECT_LIST, normalizeSubjectSlug } from '../constants/subjects';
 import type { SubjectConfig } from '../constants/subjects';
 import { questionService } from '../services/questionService';
 
@@ -145,6 +146,17 @@ export const PracticeHub: React.FC = () => {
                       <span className="text-slate-400 italic">Incomplete</span>
                     )}
                   </div>
+                  {h.results && (
+                    <div className="pt-2 mt-2 border-t border-slate-100">
+                      <Link
+                        to={`/practice/${normalizeSubjectSlug(h.category || 'quantitative_aptitude')}?review=${h.id}`}
+                        className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-700 text-xs font-semibold transition-colors border border-blue-200"
+                      >
+                        <FaEye className="w-3.5 h-3.5" />
+                        <span>Review Questions</span>
+                      </Link>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

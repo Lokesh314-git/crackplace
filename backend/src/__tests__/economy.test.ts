@@ -247,6 +247,82 @@ describe('Authoritative Game Economy & Battle Calculations', () => {
       expect(result.playerB.elo.previous + result.playerB.elo.change).toBe(result.playerB.elo.current);
     });
 
+    it('correctly calculates draw outcome and exactly zero Elo change for equal starting ratings', () => {
+      // Both participants have identical submissions (tied score) and identical Elo ratings (1000)
+      const tiedSubs = [
+        { questionIndex: 0, selectedOption: 0, correct: true, responseTimeMs: 5000, timeLimitMs: 30000, difficulty: 'Medium' as const },
+        { questionIndex: 1, selectedOption: 1, correct: false, responseTimeMs: 5000, timeLimitMs: 30000, difficulty: 'Medium' as const }
+      ];
+
+      const p1: BattleParticipantInput = {
+        userId: 'tied_p1',
+        username: 'P1',
+        submissions: tiedSubs,
+        previousState: { totalXp: 100, coins: 50, eloRating: 1000 }
+      };
+
+      const p2: BattleParticipantInput = {
+        userId: 'tied_p2',
+        username: 'P2',
+        submissions: tiedSubs,
+        previousState: { totalXp: 100, coins: 50, eloRating: 1000 }
+      };
+
+      const result = RewardCalculator.calculateBattleRewards('battle_draw_equal_elo', p1, p2, 2);
+
+      expect(result.isDraw).toBe(true);
+      expect(result.winnerId).toBeNull();
+      expect(result.loserId).toBeNull();
+      expect(result.playerA.outcome).toBe('DRAW');
+      expect(result.playerB.outcome).toBe('DRAW');
+      expect(result.playerA.score).toBe(result.playerB.score);
+
+      // Authoritative standard Elo for equal ratings on a draw MUST BE 0
+      expect(result.playerA.elo.change).toBe(0);
+      expect(result.playerB.elo.change).toBe(0);
+      expect(result.playerA.elo.current).toBe(1000);
+      expect(result.playerB.elo.current).toBe(1000);
+
+      // Both players receive draw XP and coin rewards (draw base 20 + 1 correct 5 + speed bonus 2)
+      expect(result.playerA.xp.earned).toBe(GAME_CONFIG.xp.battleDrawReward + 5 + 2);
+      expect(result.playerB.xp.earned).toBe(GAME_CONFIG.xp.battleDrawReward + 5 + 2);
+      expect(result.playerA.coins.earned).toBe(GAME_CONFIG.coins.battle.draw);
+      expect(result.playerB.coins.earned).toBe(GAME_CONFIG.coins.battle.draw);
+    });
+
+    it('correctly calculates draw outcome with asymmetrical Elo change when starting ratings differ', () => {
+      // Both participants tied with same score, but P1 is 1200 Elo and P2 is 1000 Elo
+      const tiedSubs = [
+        { questionIndex: 0, selectedOption: 0, correct: true, responseTimeMs: 5000, timeLimitMs: 30000, difficulty: 'Medium' as const }
+      ];
+
+      const higherRatedP1: BattleParticipantInput = {
+        userId: 'high_p1',
+        username: 'HighP1',
+        submissions: tiedSubs,
+        previousState: { totalXp: 500, coins: 200, eloRating: 1200 }
+      };
+
+      const lowerRatedP2: BattleParticipantInput = {
+        userId: 'low_p2',
+        username: 'LowP2',
+        submissions: tiedSubs,
+        previousState: { totalXp: 100, coins: 50, eloRating: 1000 }
+      };
+
+      const result = RewardCalculator.calculateBattleRewards('battle_draw_diff_elo', higherRatedP1, lowerRatedP2, 1);
+
+      expect(result.isDraw).toBe(true);
+      expect(result.winnerId).toBeNull();
+      expect(result.playerA.outcome).toBe('DRAW');
+      expect(result.playerB.outcome).toBe('DRAW');
+
+      // Higher-rated player loses points on draw against lower-rated player; lower-rated gains points
+      expect(result.playerA.elo.change).toBeLessThan(0);
+      expect(result.playerB.elo.change).toBeGreaterThan(0);
+      expect(result.playerA.elo.change + result.playerB.elo.change).toBe(0); // Zero-sum symmetry
+    });
+
     it('is completely idempotent when executed multiple times through BattleResultProcessor', async () => {
       const battleId = `idempotent_battle_${Date.now()}`;
 

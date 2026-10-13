@@ -100,22 +100,12 @@ export class RewardCalculator {
       winnerId = playerB.userId;
       loserId = playerA.userId;
     } else {
-      // Tie breaker: faster total response time wins if scores are tied
-      if (scoreA.totalResponseTimeMs < scoreB.totalResponseTimeMs) {
-        outcomeA = 'WIN';
-        outcomeB = 'LOSS';
-        winnerId = playerA.userId;
-        loserId = playerB.userId;
-        tieBreakerUsed = 'response_time';
-      } else if (scoreB.totalResponseTimeMs < scoreA.totalResponseTimeMs) {
-        outcomeA = 'LOSS';
-        outcomeB = 'WIN';
-        winnerId = playerB.userId;
-        loserId = playerA.userId;
-        tieBreakerUsed = 'response_time';
-      } else {
-        isDraw = true;
-      }
+      // Both scores equal: authoritative Draw
+      outcomeA = 'DRAW';
+      outcomeB = 'DRAW';
+      winnerId = null;
+      loserId = null;
+      isDraw = true;
     }
 
     // 3. Elo Calculations

@@ -1405,12 +1405,6 @@ export const Battle: React.FC = () => {
 
   // State 3: Assessment Concluded / Scorecard
   if (status === 'concluded' && battleResult) {
-    const isMeWinner = battleResult.winnerId === userProfile?.uid || battleResult.playerReward?.outcome === 'WIN';
-    const isDraw = battleResult.isDraw || battleResult.winnerId === 'draw' || battleResult.playerReward?.outcome === 'DRAW';
-
-    let outcomeTitle = 'Assessment Tied';
-    let outcomeBadge = 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700';
-
     const playerReward = battleResult.playerReward;
     const opponentReward = battleResult.opponentReward;
     const myDeltas = (battleResult as any).playerDeltas?.[userProfile?.uid || ''];
@@ -1418,20 +1412,37 @@ export const Battle: React.FC = () => {
     const finalMyScore = playerReward?.score ?? myDeltas?.score ?? playerScore;
     const finalOppScore = playerReward?.opponentScore ?? opponentReward?.score ?? opponentProgress.score;
 
+    const isDraw = Boolean(
+      battleResult.isDraw ||
+      battleResult.winnerId === 'draw' ||
+      battleResult.winnerId === null ||
+      playerReward?.outcome === 'DRAW' ||
+      finalMyScore === finalOppScore
+    );
+    const isMeWinner = !isDraw && (battleResult.winnerId === userProfile?.uid || playerReward?.outcome === 'WIN');
+
+    let outcomeTitle = 'Draw';
+    let outcomeBadge = 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700';
+
     const eloVal = playerReward?.elo?.change ?? myDeltas?.elo;
     const xpVal = playerReward?.xp?.earned ?? myDeltas?.xp;
     const coinsVal = playerReward?.coins?.earned ?? myDeltas?.coins;
 
-    let eloChange = eloVal !== undefined ? (eloVal >= 0 ? `+${eloVal}` : `${eloVal}`) : '+0';
-    let coinsChange = coinsVal !== undefined ? `+${coinsVal}` : '+0';
-    let xpChange = xpVal !== undefined ? `+${xpVal}` : '+0';
+    let eloChange = '0';
+    if (typeof eloVal === 'number') {
+      if (eloVal > 0) eloChange = `+${eloVal}`;
+      else if (eloVal < 0) eloChange = `${eloVal}`;
+      else eloChange = '0';
+    }
+    let coinsChange = coinsVal !== undefined ? (coinsVal > 0 ? `+${coinsVal}` : `${coinsVal}`) : '0';
+    let xpChange = xpVal !== undefined ? (xpVal > 0 ? `+${xpVal}` : `${xpVal}`) : '0';
 
     if (!isDraw) {
       if (isMeWinner) {
-        outcomeTitle = 'Victory — Assessment Won';
+        outcomeTitle = 'Victory';
         outcomeBadge = 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800';
       } else {
-        outcomeTitle = 'Defeat — Good Attempt';
+        outcomeTitle = 'Defeat';
         outcomeBadge = 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800';
       }
     }
@@ -1487,7 +1498,13 @@ export const Battle: React.FC = () => {
         <div className="grid grid-cols-3 sm:grid-cols-3 gap-2 sm:gap-3">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3 sm:p-4 rounded-xl text-center shadow-xs">
             <span className="text-[9px] sm:text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase">Rating Change</span>
-            <p className={`font-bold text-base sm:text-lg mt-1 ${typeof eloVal === 'number' && eloVal < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+            <p className={`font-bold text-base sm:text-lg mt-1 ${
+              typeof eloVal === 'number' && eloVal > 0 
+                ? 'text-emerald-600 dark:text-emerald-400' 
+                : typeof eloVal === 'number' && eloVal < 0 
+                  ? 'text-rose-600 dark:text-rose-400' 
+                  : 'text-slate-600 dark:text-slate-300'
+            }`}>
               {eloChange} Elo
             </p>
           </div>

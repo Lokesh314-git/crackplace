@@ -7,7 +7,105 @@ import { calculateLevelFromXP, LevelCalculator, syncMissionsState, processMissio
 import { checkAndFulfillReferral } from '../services/referralService';
 import { calculatePlacementReadiness } from '../utils/readiness';
 
+import { supabase } from '../config/supabase';
+
 const router = Router();
+
+/**
+ * Resolves verified explanation or reliable fallback text
+ */
+export function resolveQuestionExplanation(q: any): string {
+  if (q.explanation && typeof q.explanation === 'string' && q.explanation.trim().length > 0) {
+    return q.explanation.trim();
+  }
+  return 'Explanation not available for this question yet';
+}
+
+/**
+ * Enriches question records with verified explanations from Supabase if missing
+ */
+export async function enrichQuestionsWithExplanations(questions: any[]): Promise<any[]> {
+  const missing = questions.filter(q => !q.explanation || typeof q.explanation !== 'string' || q.explanation.trim().length === 0);
+  if (missing.length === 0) {
+    return questions.map(q => ({
+      ...q,
+      explanation: resolveQuestionExplanation(q)
+    }));
+  }
+
+  const ids = missing.map(q => q.id).filter(Boolean);
+  if (ids.length > 0 && supabase) {
+    try {
+      const { data } = await supabase
+        .from('questions')
+        .select('id, question_id, explanation, correct_answer')
+        .or(`id.in.(${ids.map(id => `"${id}"`).join(',')}),question_id.in.(${ids.map(id => `"${id}"`).join(',')})`);
+
+      if (data && data.length > 0) {
+        const expMap = new Map<string, string>();
+        for (const row of data) {
+          if (row.explanation && row.explanation.trim().length > 0) {
+            if (row.id) expMap.set(row.id, row.explanation.trim());
+            if (row.question_id) expMap.set(row.question_id, row.explanation.trim());
+          }
+        }
+        return questions.map(q => ({
+          ...q,
+          explanation: q.explanation?.trim() || expMap.get(q.id) || resolveQuestionExplanation(q)
+        }));
+      }
+    } catch (err) {
+      console.warn('[QUIZ API] Supabase fallback explanation lookup failed:', err);
+    }
+  }
+
+  return questions.map(q => ({
+    ...q,
+    explanation: resolveQuestionExplanation(q)
+  }));
+}
+
+/**
+ * Maps question records to detailed review payload including canonical correct answer and user submission
+ */
+export function formatReviewQuestions(questions: any[], userAnswers: Record<string, any> = {}): any[] {
+  return questions.map((q: any, idx: number) => {
+    const submittedVal = userAnswers[String(idx)] ?? userAnswers[idx];
+    const isAnswered = typeof submittedVal === 'number' && submittedVal >= 0;
+    const isCorrect = isAnswered && submittedVal === q.correctOptionIndex;
+
+    let correctOptionText = '';
+    if (Array.isArray(q.options) && typeof q.correctOptionIndex === 'number' && q.options[q.correctOptionIndex] !== undefined) {
+      correctOptionText = String(q.options[q.correctOptionIndex]);
+    } else if (q.correctAnswer && typeof q.correctAnswer === 'string') {
+      correctOptionText = q.correctAnswer;
+    }
+
+    let userOptionText: string | null = null;
+    if (isAnswered && Array.isArray(q.options) && q.options[submittedVal] !== undefined) {
+      userOptionText = String(q.options[submittedVal]);
+    } else if (isAnswered) {
+      userOptionText = String(submittedVal);
+    }
+
+    const explanation = resolveQuestionExplanation(q);
+
+    return {
+      id: q.id,
+      questionIndex: idx,
+      questionText: q.questionText,
+      options: q.options || [],
+      correctOptionIndex: q.correctOptionIndex,
+      correctAnswer: correctOptionText,
+      correctOptionText,
+      userAnswerIndex: isAnswered ? submittedVal : null,
+      userAnswerText: userOptionText,
+      isAnswered,
+      isCorrect,
+      explanation
+    };
+  });
+}
 
 const generateQuizSchema = z.object({
   category: z.string(),
@@ -174,12 +272,23 @@ router.post(['/:quizId/results', '/:quizId/submit'], optionalAuth, async (req: A
       coinsEarned
     };
 
+    const userAnswers = payload.answers || {};
+    const submittedAt = new Date().toISOString();
+
+    const enrichedQuestions = await enrichQuestionsWithExplanations(quizData.questions || []);
+    const reviewQuestions = formatReviewQuestions(enrichedQuestions, userAnswers);
+
     if (!req.user) {
-      // Guest submit: update quiz doc results and return
-      await quizDocRef.update({ results });
+      // Guest submit: update quiz doc results, user answers, and return reviewQuestions
+      await quizDocRef.update({
+        results,
+        userAnswers,
+        submittedAt
+      });
       return res.json({
         success: true,
         results,
+        reviewQuestions,
         leveledUp: false,
         newLevel: 1,
         unlockedAchievements: []
@@ -343,7 +452,11 @@ router.post(['/:quizId/results', '/:quizId/submit'], optionalAuth, async (req: A
       const quizTxKey = `quiz_${quizId}_${req.user!.uid}`;
       transaction.set(db.collection('xpTransactions').doc(quizTxKey), baseEval.transaction);
 
-      transaction.update(quizDocRef, { results });
+      transaction.update(quizDocRef, {
+        results,
+        userAnswers,
+        submittedAt
+      });
       transaction.update(userDocRef, {
         xp: finalEval.xpAfter,
         totalXp: finalEval.xpAfter,
@@ -390,13 +503,7 @@ router.post(['/:quizId/results', '/:quizId/submit'], optionalAuth, async (req: A
     res.json({
       message: 'Quiz results recorded successfully',
       results,
-      reviewQuestions: quizData.questions.map((q: any) => ({
-        id: q.id,
-        questionText: q.questionText,
-        options: q.options,
-        correctOptionIndex: q.correctOptionIndex,
-        explanation: q.explanation || ''
-      })),
+      reviewQuestions,
       profile: updatedProfile,
       xpEarned,
       coinsEarned,
@@ -406,6 +513,57 @@ router.post(['/:quizId/results', '/:quizId/submit'], optionalAuth, async (req: A
   } catch (error) {
     console.error('[QUIZ API] Result update failed:', error);
     res.status(500).json({ error: 'Failed to record quiz results.' });
+  }
+});
+
+/**
+ * GET /:quizId/review and GET /:quizId
+ * Authoritative review endpoint for completed assessments
+ * Enforces ownership and completion checks on the backend
+ */
+router.get(['/:quizId/review', '/:quizId'], optionalAuth, async (req: AuthenticatedRequest, res) => {
+  const { quizId } = req.params;
+
+  try {
+    const quizDocRef = db.collection('quizzes').doc(quizId);
+    const quizDoc = await quizDocRef.get();
+
+    if (!quizDoc.exists) {
+      return res.status(404).json({ error: 'Assessment not found' });
+    }
+
+    const quizData = quizDoc.data()!;
+
+    // Security check 1: Assessment MUST be completed before review can be accessed
+    if (!quizData.results) {
+      return res.status(403).json({ error: 'Cannot review an active assessment before submission' });
+    }
+
+    // Security check 2: Ownership check
+    // Allow if guest assessment or matching authenticated user
+    if (req.user && quizData.userId && quizData.userId !== req.user.uid && !quizData.userId.startsWith('guest_')) {
+      return res.status(403).json({ error: 'Forbidden: Access denied to this assessment review' });
+    }
+
+    const userAnswers = quizData.userAnswers || {};
+    const enrichedQuestions = await enrichQuestionsWithExplanations(quizData.questions || []);
+    const reviewQuestions = formatReviewQuestions(enrichedQuestions, userAnswers);
+
+    return res.json({
+      success: true,
+      quizId,
+      category: quizData.category,
+      difficulty: quizData.difficulty,
+      results: quizData.results,
+      userAnswers,
+      reviewQuestions,
+      questions: reviewQuestions,
+      createdAt: quizData.createdAt,
+      submittedAt: quizData.submittedAt || null
+    });
+  } catch (error) {
+    console.error('[QUIZ API] Error retrieving assessment review:', error);
+    res.status(500).json({ error: 'Failed to retrieve assessment review' });
   }
 });
 

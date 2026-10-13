@@ -1,10 +1,16 @@
 import { create } from 'zustand';
 
 export interface Question {
+  id?: string;
   questionText: string;
   options: string[];
-  correctOptionIndex: number;
-  explanation: string;
+  correctOptionIndex?: number;
+  correctAnswer?: string;
+  correctOptionText?: string;
+  explanation?: string;
+  userAnswerIndex?: number | null;
+  userAnswerText?: string | null;
+  isCorrect?: boolean;
 }
 
 export interface Quiz {
@@ -30,6 +36,7 @@ interface QuizState {
     xpEarned: number;
     coinsEarned: number;
   } | null;
+  reviewQuestions: Question[] | null;
 
   startQuizGeneration: () => void;
   setQuiz: (quiz: Quiz) => void;
@@ -37,7 +44,7 @@ interface QuizState {
   nextQuestion: () => void;
   prevQuestion: () => void;
   tickTimer: () => void;
-  finishQuiz: (results: NonNullable<QuizState['results']>) => void;
+  finishQuiz: (results: NonNullable<QuizState['results']>, reviewQuestions?: Question[]) => void;
   resetQuizState: () => void;
 }
 
@@ -48,6 +55,7 @@ export const useQuizStore = create<QuizState>((set) => ({
   timeSpentSeconds: 0,
   quizStatus: 'idle',
   results: null,
+  reviewQuestions: null,
 
   startQuizGeneration: () => set({ 
     quizStatus: 'generating', 
@@ -55,9 +63,10 @@ export const useQuizStore = create<QuizState>((set) => ({
     currentQuestionIndex: 0, 
     selectedAnswers: {}, 
     timeSpentSeconds: 0, 
-    results: null 
+    results: null,
+    reviewQuestions: null
   }),
-  setQuiz: (quiz) => set({ currentQuiz: quiz, quizStatus: 'active' }),
+  setQuiz: (quiz) => set({ currentQuiz: quiz, quizStatus: 'active', reviewQuestions: null }),
   selectOption: (qIndex, oIndex) => set((state) => ({
     selectedAnswers: { ...state.selectedAnswers, [qIndex]: oIndex }
   })),
@@ -70,14 +79,23 @@ export const useQuizStore = create<QuizState>((set) => ({
   tickTimer: () => set((state) => ({
     timeSpentSeconds: state.timeSpentSeconds + 1
   })),
-  finishQuiz: (results) => set({ quizStatus: 'finished', results }),
+  finishQuiz: (results, reviewQuestions) => set((state) => ({
+    quizStatus: 'finished',
+    results,
+    reviewQuestions: reviewQuestions || null,
+    currentQuiz: state.currentQuiz && reviewQuestions ? {
+      ...state.currentQuiz,
+      questions: reviewQuestions
+    } : state.currentQuiz
+  })),
   resetQuizState: () => set({ 
     currentQuiz: null, 
     currentQuestionIndex: 0, 
     selectedAnswers: {}, 
     timeSpentSeconds: 0, 
     quizStatus: 'idle', 
-    results: null 
+    results: null,
+    reviewQuestions: null
   })
 }));
 export default useQuizStore;

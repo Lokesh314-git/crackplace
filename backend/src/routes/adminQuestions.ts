@@ -16,6 +16,7 @@ adminQuestionsRouter.get('/', async (req: AdminAuthenticatedRequest, res: Respon
       difficulty: req.query.difficulty as string,
       question_type: req.query.question_type as string,
       topic: req.query.topic as string,
+      subtopic: req.query.subtopic as string,
       search: req.query.search as string,
       sortBy: req.query.sortBy as string,
       sortOrder: req.query.sortOrder as string,
@@ -57,6 +58,15 @@ adminQuestionsRouter.get('/subjects/:slug/topics', async (req: AdminAuthenticate
 adminQuestionsRouter.get('/subjects/:slug/topic-stats', async (req: AdminAuthenticatedRequest, res: Response) => {
   try {
     const stats = await AdminQuestionService.getTopicStats(req.params.slug);
+    res.json(stats);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+adminQuestionsRouter.get('/subjects/:slug/topics/:topic/subtopics', async (req: AdminAuthenticatedRequest, res: Response) => {
+  try {
+    const stats = await AdminQuestionService.getSubtopicStats(req.params.slug, req.params.topic);
     res.json(stats);
   } catch (error: any) {
     res.status(500).json({ error: error.message });

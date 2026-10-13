@@ -72,6 +72,7 @@ export interface SubjectInsert {
 export interface QuestionFilters {
   subject?: string;
   topic?: string;
+  subtopic?: string;
   difficulty?: QuestionDifficulty | 'all';
   question_type?: QuestionType | 'all';
   search?: string;
@@ -79,6 +80,17 @@ export interface QuestionFilters {
   pageSize?: number;
   sortBy?: 'created_at' | 'question_id' | 'difficulty' | 'subject';
   sortOrder?: 'asc' | 'desc';
+}
+
+export interface SubtopicStat {
+  name: string;
+  question_count: number;
+}
+
+export interface TopicStat {
+  name: string;
+  question_count: number;
+  subtopics?: SubtopicStat[];
 }
 
 export interface PaginatedResult<T> {
