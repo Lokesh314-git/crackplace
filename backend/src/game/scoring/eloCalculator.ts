@@ -52,7 +52,12 @@ export class EloCalculator {
     if (outcome === 'WIN') actual = 1.0;
     if (outcome === 'LOSS') actual = 0.0;
 
-    const rawChange = Math.round(kFactor * (actual - expected));
+    let rawChange = Math.round(kFactor * (actual - expected));
+    // Authoritative rule: A genuine draw must NEVER result in an Elo loss or gain for either player
+    if (outcome === 'DRAW') {
+      rawChange = 0;
+    }
+
     const minFloor = GAME_CONFIG.elo.minFloor;
     const maxCeiling = GAME_CONFIG.elo.maxCeiling;
 
@@ -98,9 +103,14 @@ export class EloCalculator {
       sB = 1.0;
     }
 
-    const rawChangeA = Math.round(k * (sA - eA));
-    // Enforce symmetry: change of B = -change of A
-    const rawChangeB = -rawChangeA;
+    let rawChangeA = Math.round(k * (sA - eA));
+    let rawChangeB = -rawChangeA;
+
+    // Authoritative rule: A genuine draw must NEVER result in an Elo loss or gain for either player
+    if (outcomeA === 'DRAW') {
+      rawChangeA = 0;
+      rawChangeB = 0;
+    }
 
     const minFloor = GAME_CONFIG.elo.minFloor;
     const maxCeiling = GAME_CONFIG.elo.maxCeiling;

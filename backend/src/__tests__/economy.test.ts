@@ -290,7 +290,7 @@ describe('Authoritative Game Economy & Battle Calculations', () => {
       expect(result.playerB.coins.earned).toBe(GAME_CONFIG.coins.battle.draw);
     });
 
-    it('correctly calculates draw outcome with asymmetrical Elo change when starting ratings differ', () => {
+    it('guarantees that draws never cause an Elo loss, even when starting ratings differ', () => {
       // Both participants tied with same score, but P1 is 1200 Elo and P2 is 1000 Elo
       const tiedSubs = [
         { questionIndex: 0, selectedOption: 0, correct: true, responseTimeMs: 5000, timeLimitMs: 30000, difficulty: 'Medium' as const }
@@ -317,10 +317,78 @@ describe('Authoritative Game Economy & Battle Calculations', () => {
       expect(result.playerA.outcome).toBe('DRAW');
       expect(result.playerB.outcome).toBe('DRAW');
 
-      // Higher-rated player loses points on draw against lower-rated player; lower-rated gains points
-      expect(result.playerA.elo.change).toBeLessThan(0);
-      expect(result.playerB.elo.change).toBeGreaterThan(0);
-      expect(result.playerA.elo.change + result.playerB.elo.change).toBe(0); // Zero-sum symmetry
+      // Authoritative Rule: Draws must NEVER cause an Elo loss. Both players receive exactly 0 Elo change.
+      expect(result.playerA.elo.change).toBe(0);
+      expect(result.playerB.elo.change).toBe(0);
+      expect(result.playerA.elo.current).toBe(1200);
+      expect(result.playerB.elo.current).toBe(1000);
+    });
+
+    it('verifies all draw and decisive match test cases (0-0, 10-10, 20-15, 15-20)', () => {
+      // Test Case 1: 0-0 Draw
+      const zeroSubs = [
+        { questionIndex: 0, selectedOption: -1, correct: false, responseTimeMs: 30000, timeLimitMs: 30000, difficulty: 'Medium' as const }
+      ];
+      const pA_zero: BattleParticipantInput = {
+        userId: 'pA', username: 'A', submissions: zeroSubs, previousState: { totalXp: 0, coins: 0, eloRating: 1050 }
+      };
+      const pB_zero: BattleParticipantInput = {
+        userId: 'pB', username: 'B', submissions: zeroSubs, previousState: { totalXp: 0, coins: 0, eloRating: 980 }
+      };
+      const res0 = RewardCalculator.calculateBattleRewards('b_0_0', pA_zero, pB_zero, 1);
+      expect(res0.isDraw).toBe(true);
+      expect(res0.playerA.score).toBe(0);
+      expect(res0.playerB.score).toBe(0);
+      expect(res0.playerA.elo.change).toBe(0);
+      expect(res0.playerB.elo.change).toBe(0);
+
+      // Test Case 2: 10-10 Draw (both answered 1 question correctly with equal time)
+      const tenSubs = [
+        { questionIndex: 0, selectedOption: 1, correct: true, responseTimeMs: 15000, timeLimitMs: 30000, difficulty: 'Medium' as const }
+      ];
+      const pA_ten: BattleParticipantInput = {
+        userId: 'pA', username: 'A', submissions: tenSubs, previousState: { totalXp: 100, coins: 50, eloRating: 1100 }
+      };
+      const pB_ten: BattleParticipantInput = {
+        userId: 'pB', username: 'B', submissions: tenSubs, previousState: { totalXp: 100, coins: 50, eloRating: 1000 }
+      };
+      const res10 = RewardCalculator.calculateBattleRewards('b_10_10', pA_ten, pB_ten, 1);
+      expect(res10.isDraw).toBe(true);
+      expect(res10.playerA.score).toBe(res10.playerB.score);
+      expect(res10.playerA.elo.change).toBe(0);
+      expect(res10.playerB.elo.change).toBe(0);
+
+      // Test Case 3: Player A wins (20-15 or higher score)
+      const winSubsA = [
+        { questionIndex: 0, selectedOption: 0, correct: true, responseTimeMs: 5000, timeLimitMs: 30000, difficulty: 'Medium' as const },
+        { questionIndex: 1, selectedOption: 0, correct: true, responseTimeMs: 5000, timeLimitMs: 30000, difficulty: 'Medium' as const }
+      ];
+      const winSubsB = [
+        { questionIndex: 0, selectedOption: 0, correct: true, responseTimeMs: 5000, timeLimitMs: 30000, difficulty: 'Medium' as const },
+        { questionIndex: 1, selectedOption: 1, correct: false, responseTimeMs: 5000, timeLimitMs: 30000, difficulty: 'Medium' as const }
+      ];
+      const pA_win: BattleParticipantInput = {
+        userId: 'pA', username: 'A', submissions: winSubsA, previousState: { totalXp: 100, coins: 50, eloRating: 1000 }
+      };
+      const pB_loss: BattleParticipantInput = {
+        userId: 'pB', username: 'B', submissions: winSubsB, previousState: { totalXp: 100, coins: 50, eloRating: 1000 }
+      };
+      const resWinA = RewardCalculator.calculateBattleRewards('b_win_A', pA_win, pB_loss, 2);
+      expect(resWinA.isDraw).toBe(false);
+      expect(resWinA.winnerId).toBe('pA');
+      expect(resWinA.playerA.outcome).toBe('WIN');
+      expect(resWinA.playerB.outcome).toBe('LOSS');
+      expect(resWinA.playerA.elo.change).toBeGreaterThan(0);
+      expect(resWinA.playerB.elo.change).toBeLessThan(0);
+
+      // Test Case 4: Player B wins (reversal)
+      const resWinB = RewardCalculator.calculateBattleRewards('b_win_B', pB_loss, pA_win, 2);
+      expect(resWinB.isDraw).toBe(false);
+      expect(resWinB.winnerId).toBe('pA'); // pA is playerB in this invocation
+      expect(resWinB.playerA.outcome).toBe('LOSS');
+      expect(resWinB.playerB.outcome).toBe('WIN');
+      expect(resWinB.playerA.elo.change).toBeLessThan(0);
+      expect(resWinB.playerB.elo.change).toBeGreaterThan(0);
     });
 
     it('is completely idempotent when executed multiple times through BattleResultProcessor', async () => {

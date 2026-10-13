@@ -142,6 +142,7 @@ export const Battle: React.FC = () => {
 
   // Real-time tracking
   const [playerScore, setPlayerScore] = useState(0);
+  const [playerCompletedQuestions, setPlayerCompletedQuestions] = useState(0);
   const [opponentProgress, setOpponentProgress] = useState({ progressIndex: 0, score: 0, finished: false });
   const [battleResult, setBattleResult] = useState<BattleResult | any | null>(null);
   const [questionTimeLeft, setQuestionTimeLeft] = useState(30);
@@ -204,6 +205,11 @@ export const Battle: React.FC = () => {
       setBattleId(data.battleId);
       setOpponent(data.opponent);
       setQuestions(data.quiz);
+      setPlayerScore(0);
+      setPlayerCompletedQuestions(0);
+      setOpponentProgress({ progressIndex: 0, score: 0, finished: false });
+      setCurrentIndex(0);
+      currentIndexRef.current = 0;
       setStatus('battle');
       
       // Clean matchmaking socket
@@ -225,6 +231,9 @@ export const Battle: React.FC = () => {
     }
     setStatus('lounge');
     setSearchParams({});
+    setPlayerScore(0);
+    setPlayerCompletedQuestions(0);
+    setOpponentProgress({ progressIndex: 0, score: 0, finished: false });
   };
 
   const handleLeaveLobby = () => {
@@ -234,6 +243,9 @@ export const Battle: React.FC = () => {
     }
     setStatus('lounge');
     setSearchParams({});
+    setPlayerScore(0);
+    setPlayerCompletedQuestions(0);
+    setOpponentProgress({ progressIndex: 0, score: 0, finished: false });
   };
 
   const handleToggleReady = () => {
@@ -494,6 +506,7 @@ export const Battle: React.FC = () => {
       const restoredIdx = typeof data.currentQuestionIndex === 'number' ? data.currentQuestionIndex : 0;
       setCurrentIndex(restoredIdx);
       currentIndexRef.current = restoredIdx;
+      setPlayerCompletedQuestions(restoredIdx);
 
       setSelectedOption(null);
       selectedOptionRef.current = null;
@@ -556,6 +569,9 @@ export const Battle: React.FC = () => {
       questionsRef.current = data.quiz;
       setCurrentIndex(0);
       currentIndexRef.current = 0;
+      setPlayerScore(0);
+      setPlayerCompletedQuestions(0);
+      setOpponentProgress({ progressIndex: 0, score: 0, finished: false });
       setSelectedOption(null);
       selectedOptionRef.current = null;
       setAnswerFeedback(null);
@@ -594,6 +610,10 @@ export const Battle: React.FC = () => {
       totalQuestions?: number;
     }) => {
       setPlayerScore(data.score);
+      const nextProgress = typeof data.nextQuestionIndex === 'number'
+        ? data.nextQuestionIndex
+        : (data.questionIndex + 1);
+      setPlayerCompletedQuestions(nextProgress);
 
       const chosenOption = selectedOptionRef.current ?? (typeof data.selectedOption === 'number' ? data.selectedOption : -1);
 
@@ -1424,12 +1444,14 @@ export const Battle: React.FC = () => {
     let outcomeTitle = 'Draw';
     let outcomeBadge = 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700';
 
-    const eloVal = playerReward?.elo?.change ?? myDeltas?.elo;
+    const eloVal = isDraw ? 0 : (playerReward?.elo?.change ?? myDeltas?.elo);
     const xpVal = playerReward?.xp?.earned ?? myDeltas?.xp;
     const coinsVal = playerReward?.coins?.earned ?? myDeltas?.coins;
 
     let eloChange = '0';
-    if (typeof eloVal === 'number') {
+    if (isDraw) {
+      eloChange = '0';
+    } else if (typeof eloVal === 'number') {
       if (eloVal > 0) eloChange = `+${eloVal}`;
       else if (eloVal < 0) eloChange = `${eloVal}`;
       else eloChange = '0';
@@ -1499,9 +1521,9 @@ export const Battle: React.FC = () => {
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3 sm:p-4 rounded-xl text-center shadow-xs">
             <span className="text-[9px] sm:text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase">Rating Change</span>
             <p className={`font-bold text-base sm:text-lg mt-1 ${
-              typeof eloVal === 'number' && eloVal > 0 
+              !isDraw && typeof eloVal === 'number' && eloVal > 0 
                 ? 'text-emerald-600 dark:text-emerald-400' 
-                : typeof eloVal === 'number' && eloVal < 0 
+                : !isDraw && typeof eloVal === 'number' && eloVal < 0 
                   ? 'text-rose-600 dark:text-rose-400' 
                   : 'text-slate-600 dark:text-slate-300'
             }`}>
@@ -1531,6 +1553,9 @@ export const Battle: React.FC = () => {
             setOpponent(null);
             setQuestions([]);
             setBattleResult(null);
+            setPlayerScore(0);
+            setPlayerCompletedQuestions(0);
+            setOpponentProgress({ progressIndex: 0, score: 0, finished: false });
           }}
           className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 font-semibold text-sm text-white transition-colors cursor-pointer shadow-xs"
         >
@@ -1619,12 +1644,17 @@ export const Battle: React.FC = () => {
         <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-1.5">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase">You</span>
-            <span className="text-xs font-bold text-slate-900 dark:text-white font-mono">{playerScore} pts</span>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 font-mono">
+                {Math.min(questions.length, playerCompletedQuestions)}/{questions.length}
+              </span>
+              <span className="text-xs font-bold text-slate-900 dark:text-white font-mono">{playerScore} pts</span>
+            </div>
           </div>
           <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
             <div 
               className="h-full bg-blue-600 transition-all duration-300 rounded-full" 
-              style={{ width: `${(currentIndex / questions.length) * 100}%` }}
+              style={{ width: `${Math.min(100, (playerCompletedQuestions / (questions.length || 1)) * 100)}%` }}
             ></div>
           </div>
         </div>
@@ -1633,12 +1663,17 @@ export const Battle: React.FC = () => {
         <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-1.5">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase truncate max-w-[90px]">{opponent?.displayName || 'Opponent'}</span>
-            <span className="text-xs font-bold text-slate-900 dark:text-white font-mono">{opponentProgress.score} pts</span>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 font-mono">
+                {Math.min(questions.length, opponentProgress.progressIndex)}/{questions.length}
+              </span>
+              <span className="text-xs font-bold text-slate-900 dark:text-white font-mono">{opponentProgress.score} pts</span>
+            </div>
           </div>
           <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
             <div 
               className="h-full bg-purple-600 transition-all duration-300 rounded-full" 
-              style={{ width: `${(opponentProgress.progressIndex / questions.length) * 100}%` }}
+              style={{ width: `${Math.min(100, (opponentProgress.progressIndex / (questions.length || 1)) * 100)}%` }}
             ></div>
           </div>
         </div>
