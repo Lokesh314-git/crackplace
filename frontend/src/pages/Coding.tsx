@@ -11,6 +11,7 @@ import {
   FaArrowRotateLeft,
   FaAward
 } from 'react-icons/fa6';
+import { ComingSoonGuard } from '../components/common/ComingSoonGuard';
 
 const CATEGORIES = ['Arrays', 'Strings', 'Linked Lists', 'Stacks & Queues', 'Trees', 'Graphs', 'Dynamic Programming', 'SQL'];
 const DIFFICULTIES = ['easy', 'medium', 'hard'] as const;
@@ -65,7 +66,7 @@ interface AIReview {
   editorialCode: string;
 }
 
-export const Coding: React.FC = () => {
+const CodingContent: React.FC = () => {
   const { token, updateProfile } = useAuthStore();
   
   const editorRef = useRef<any>(null);
@@ -1090,5 +1091,13 @@ function ${methodName}(nums) {
 `;
   }
 }
+
+export const Coding: React.FC = () => {
+  return (
+    <ComingSoonGuard pageKey="coding_workspace">
+      <CodingContent />
+    </ComingSoonGuard>
+  );
+};
 
 export default Coding;

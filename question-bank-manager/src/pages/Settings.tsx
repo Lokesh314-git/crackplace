@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Server,
   Copy,
@@ -17,7 +18,13 @@ import {
   History,
   Loader2,
   ShieldCheck,
-  ShieldAlert
+  ShieldAlert,
+  Globe,
+  BookOpen,
+  Terminal,
+  ExternalLink,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { isSupabaseConfigured } from '../lib/supabase';
 import {
@@ -27,27 +34,60 @@ import {
   type ActiveSeasonInfo,
   type SeasonHistoryItem
 } from '../services/seasonApiService';
+import {
+  getAdminPagePublishingList,
+  updateAdminPagePublishingStatus,
+  type PageAdminMetadata,
+  type PagePublishingStatus
+} from '../services/pagePublishingApiService';
 
 export const Settings: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'seasonal' | 'database'>('seasonal');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab') === 'publishing'
+    ? 'publishing'
+    : searchParams.get('tab') === 'database'
+    ? 'database'
+    : 'seasonal';
+
+  const [activeTab, setActiveTab] = useState<'seasonal' | 'publishing' | 'database'>(initialTab);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  // Seasonal Elo settings state
-  const [loading, setLoading] = useState<boolean>(true);
-  const [saving, setSaving] = useState<boolean>(false);
-  const [triggering, setTriggering] = useState<boolean>(false);
+  // Common notification state
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Form controls
+  // Seasonal Elo settings state
+  const [seasonLoading, setSeasonLoading] = useState<boolean>(true);
+  const [seasonSaving, setSeasonSaving] = useState<boolean>(false);
+  const [seasonTriggering, setSeasonTriggering] = useState<boolean>(false);
   const [decayEnabled, setDecayEnabled] = useState<boolean>(true);
   const [reductionPercentage, setReductionPercentage] = useState<number>(20);
   const [minFloor, setMinFloor] = useState<number>(100);
-
-  // Read-only active season metadata
   const [activeSeason, setActiveSeason] = useState<ActiveSeasonInfo | null>(null);
   const [history, setHistory] = useState<SeasonHistoryItem[]>([]);
   const [configuredMeta, setConfiguredMeta] = useState<{ by?: string; at?: string } | null>(null);
+
+  // Page Publishing settings state
+  const [pagesLoading, setPagesLoading] = useState<boolean>(true);
+  const [pagesList, setPagesList] = useState<PageAdminMetadata[]>([
+    {
+      pageKey: 'study_notes',
+      name: 'Study Notes',
+      route: '/study-notes',
+      status: 'coming_soon',
+      updatedAt: new Date().toISOString(),
+      updatedBy: 'system_default'
+    },
+    {
+      pageKey: 'coding_workspace',
+      name: 'Coding Workspace',
+      route: '/coding',
+      status: 'coming_soon',
+      updatedAt: new Date().toISOString(),
+      updatedBy: 'system_default'
+    }
+  ]);
+  const [updatingPageKey, setUpdatingPageKey] = useState<string | null>(null);
 
   const copyText = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
@@ -55,9 +95,14 @@ export const Settings: React.FC = () => {
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
+  const handleTabChange = (tab: 'seasonal' | 'publishing' | 'database') => {
+    setActiveTab(tab);
+    setSearchParams({ tab });
+  };
+
+  // --- Load Seasonal Settings ---
   const loadSeasonData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+    setSeasonLoading(true);
     try {
       const data = await getSeasonAdminData();
       if (data?.settings) {
@@ -77,17 +122,33 @@ export const Settings: React.FC = () => {
       }
     } catch (err: any) {
       console.warn('Failed to load season admin data:', err);
-      setError(err.message || 'Unable to connect to deployed backend for Seasonal Elo settings.');
     } finally {
-      setLoading(false);
+      setSeasonLoading(false);
+    }
+  }, []);
+
+  // --- Load Page Publishing Settings ---
+  const loadPagePublishingData = useCallback(async () => {
+    setPagesLoading(true);
+    try {
+      const list = await getAdminPagePublishingList();
+      if (Array.isArray(list) && list.length > 0) {
+        setPagesList(list);
+      }
+    } catch (err: any) {
+      console.warn('Failed to load page publishing settings:', err);
+    } finally {
+      setPagesLoading(false);
     }
   }, []);
 
   useEffect(() => {
     loadSeasonData();
-  }, [loadSeasonData]);
+    loadPagePublishingData();
+  }, [loadSeasonData, loadPagePublishingData]);
 
-  const handleSaveSettings = async (e: React.FormEvent) => {
+  // --- Seasonal Actions ---
+  const handleSaveSeasonSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccessMsg(null);
@@ -104,7 +165,7 @@ export const Settings: React.FC = () => {
       return;
     }
 
-    setSaving(true);
+    setSeasonSaving(true);
     try {
       const res = await updateSeasonSettings({
         decayEnabled,
@@ -117,16 +178,16 @@ export const Settings: React.FC = () => {
     } catch (err: any) {
       setError(err.message || 'Failed to update seasonal settings.');
     } finally {
-      setSaving(false);
+      setSeasonSaving(false);
     }
   };
 
-  const handleManualReset = async () => {
+  const handleManualSeasonReset = async () => {
     if (!window.confirm('Are you sure you want to trigger the seasonal reset now? This will apply Elo reduction to all eligible candidates if enabled.')) {
       return;
     }
 
-    setTriggering(true);
+    setSeasonTriggering(true);
     setError(null);
     setSuccessMsg(null);
 
@@ -138,7 +199,37 @@ export const Settings: React.FC = () => {
     } catch (err: any) {
       setError(err.message || 'Failed to trigger season reset.');
     } finally {
-      setTriggering(false);
+      setSeasonTriggering(false);
+    }
+  };
+
+  // --- Page Publishing Actions ---
+  const handleStatusChange = async (pageKey: string, newStatus: PagePublishingStatus, pageName: string) => {
+    if (newStatus === 'coming_soon') {
+      const confirmed = window.confirm(
+        `Are you sure you want to set "${pageName}" to Coming Soon? Users will see the Under Development screen and will not be able to use the tools until republished.`
+      );
+      if (!confirmed) return;
+    }
+
+    setUpdatingPageKey(pageKey);
+    setError(null);
+    setSuccessMsg(null);
+
+    try {
+      const res = await updateAdminPagePublishingStatus(pageKey, newStatus);
+      setSuccessMsg(res.message || `Successfully updated ${pageName} status.`);
+      setTimeout(() => setSuccessMsg(null), 4000);
+
+      // Optimistically update list
+      setPagesList((prev) =>
+        prev.map((p) => (p.pageKey === pageKey ? { ...p, status: newStatus, updatedAt: new Date().toISOString() } : p))
+      );
+      await loadPagePublishingData();
+    } catch (err: any) {
+      setError(err.message || `Failed to update status for ${pageName}.`);
+    } finally {
+      setUpdatingPageKey(null);
     }
   };
 
@@ -199,15 +290,15 @@ export async function getBattleQuestions(subject = 'dsa', limit = 10) {
             Settings & System Configuration
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Administer weekly seasonal Elo decay, PostgreSQL database credentials, and RLS policies
+            Administer weekly seasonal Elo decay, live page publishing controls, and database policies
           </p>
         </div>
 
         {/* Tab switch */}
-        <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold">
+        <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold flex-wrap gap-1">
           <button
-            onClick={() => setActiveTab('seasonal')}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+            onClick={() => handleTabChange('seasonal')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
               activeTab === 'seasonal'
                 ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -217,8 +308,19 @@ export async function getBattleQuestions(subject = 'dsa', limit = 10) {
             Seasonal Elo Settings
           </button>
           <button
-            onClick={() => setActiveTab('database')}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+            onClick={() => handleTabChange('publishing')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+              activeTab === 'publishing'
+                ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <Globe className="w-3.5 h-3.5" />
+            Page Publishing
+          </button>
+          <button
+            onClick={() => handleTabChange('database')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
               activeTab === 'database'
                 ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -267,11 +369,11 @@ export async function getBattleQuestions(subject = 'dsa', limit = 10) {
               </div>
               <button
                 onClick={loadSeasonData}
-                disabled={loading}
+                disabled={seasonLoading}
                 title="Refresh Season Data"
                 className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-50"
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-3.5 h-3.5 ${seasonLoading ? 'animate-spin' : ''}`} />
               </button>
             </div>
 
@@ -326,7 +428,7 @@ export async function getBattleQuestions(subject = 'dsa', limit = 10) {
 
           {/* Form: Admin Elo Configuration */}
           <form
-            onSubmit={handleSaveSettings}
+            onSubmit={handleSaveSeasonSettings}
             className="p-6 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-5"
           >
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
@@ -345,20 +447,20 @@ export async function getBattleQuestions(subject = 'dsa', limit = 10) {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={handleManualReset}
-                  disabled={triggering || loading}
+                  onClick={handleManualSeasonReset}
+                  disabled={seasonTriggering || seasonLoading}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-xs font-semibold hover:bg-amber-100 dark:hover:bg-amber-900/60 transition-colors cursor-pointer disabled:opacity-50"
                 >
-                  {triggering ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                  {seasonTriggering ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
                   <span>Trigger Reset Now</span>
                 </button>
 
                 <button
                   type="submit"
-                  disabled={saving || loading}
+                  disabled={seasonSaving || seasonLoading}
                   className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
                 >
-                  {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  {seasonSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                   <span>Save Settings</span>
                 </button>
               </div>
@@ -535,7 +637,174 @@ export async function getBattleQuestions(subject = 'dsa', limit = 10) {
         </div>
       )}
 
-      {/* TAB 2: DATABASE & API CREDENTIALS */}
+      {/* TAB 2: PAGE PUBLISHING CONTROLS */}
+      {activeTab === 'publishing' && (
+        <div className="space-y-6 animate-fade-in">
+          <div className="p-6 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <Globe className="w-5 h-5 text-indigo-600" />
+                <div>
+                  <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+                    Page Publishing & Coming Soon Controls
+                  </h2>
+                  <p className="text-[11px] text-slate-500">
+                    Control live availability for Study Notes and Coding Workspace independently. When a page is set to Coming Soon, users visiting it see an Under Development screen.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={loadPagePublishingData}
+                disabled={pagesLoading}
+                title="Refresh Page Publishing Status"
+                className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${pagesLoading ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+
+            {/* Management Cards for Each Page */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2">
+              {pagesList.map((page) => {
+                const isStudyNotes = page.pageKey === 'study_notes';
+                const Icon = isStudyNotes ? BookOpen : Terminal;
+                const isPublished = page.status === 'published';
+                const isUpdating = updatingPageKey === page.pageKey;
+
+                return (
+                  <div
+                    key={page.pageKey}
+                    className={`p-5 rounded-xl border transition-all shadow-xs flex flex-col justify-between space-y-4 ${
+                      isPublished
+                        ? 'border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/20 dark:bg-emerald-950/10'
+                        : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'
+                    }`}
+                  >
+                    <div className="space-y-3">
+                      {/* Card Header */}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                              isPublished
+                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300'
+                                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                            }`}
+                          >
+                            <Icon className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+                              {page.name}
+                            </h3>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className="font-mono text-[11px] text-slate-500">
+                                {page.route}
+                              </span>
+                              <a
+                                href={`https://crackplace.onrender.com${page.route}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                title="Open Live Route"
+                                className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-500"
+                              >
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Status Badge */}
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold shrink-0 ${
+                            isPublished
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
+                              : 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800'
+                          }`}
+                        >
+                          <span
+                            className={`w-2 h-2 rounded-full ${
+                              isPublished ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+                            }`}
+                          />
+                          {isPublished ? 'Published' : 'Coming Soon'}
+                        </span>
+                      </div>
+
+                      {/* Description */}
+                      <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                        {isStudyNotes
+                          ? "We're preparing study guides, revision notes, cheat sheets, and practice resources to help students prepare for campus placements."
+                          : "We're building an interactive coding environment to help candidates practice algorithms and prepare for technical interviews."}
+                      </p>
+
+                      {/* Metadata Details */}
+                      <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60 text-[11px] space-y-1">
+                        <div className="flex justify-between">
+                          <span className="text-slate-400 font-medium">Last Modified:</span>
+                          <span className="text-slate-700 dark:text-slate-300 font-mono">
+                            {formatIST(page.updatedAt)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400 font-medium">Admin Identity:</span>
+                          <span className="text-slate-700 dark:text-slate-300 font-mono truncate max-w-[180px]">
+                            {page.updatedBy || 'system'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Action Controls */}
+                    <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center gap-2">
+                      {/* Direct Publish button */}
+                      <button
+                        type="button"
+                        onClick={() => handleStatusChange(page.pageKey, 'published', page.name)}
+                        disabled={isPublished || isUpdating}
+                        className={`w-full sm:flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                          isPublished
+                            ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed border border-slate-200 dark:border-slate-700'
+                            : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs'
+                        }`}
+                      >
+                        {isUpdating ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Eye className="w-3.5 h-3.5" />
+                        )}
+                        <span>{isPublished ? 'Currently Published' : 'Publish Page'}</span>
+                      </button>
+
+                      {/* Direct Set to Coming Soon button */}
+                      <button
+                        type="button"
+                        onClick={() => handleStatusChange(page.pageKey, 'coming_soon', page.name)}
+                        disabled={!isPublished || isUpdating}
+                        className={`w-full sm:flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                          !isPublished
+                            ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed border border-slate-200 dark:border-slate-700'
+                            : 'bg-amber-600 hover:bg-amber-500 text-white shadow-xs'
+                        }`}
+                      >
+                        {isUpdating ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <EyeOff className="w-3.5 h-3.5" />
+                        )}
+                        <span>{!isPublished ? 'Currently Coming Soon' : 'Set to Coming Soon'}</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: DATABASE & API CREDENTIALS */}
       {activeTab === 'database' && (
         <div className="space-y-6">
           {/* Supabase Connection Status Card */}
@@ -580,7 +849,7 @@ export async function getBattleQuestions(subject = 'dsa', limit = 10) {
                       'url'
                     )
                   }
-                  className="p-1.5 text-slate-400 hover:text-slate-600"
+                  className="p-1.5 text-slate-400 hover:text-slate-600 cursor-pointer"
                 >
                   {copiedKey === 'url' ? (
                     <Check className="w-4 h-4 text-emerald-600" />
@@ -638,6 +907,14 @@ export async function getBattleQuestions(subject = 'dsa', limit = 10) {
                 {
                   file: '004_create_indexes_and_functions.sql',
                   desc: 'Creates B-tree indexes for fast querying and the get_random_questions RPC function.'
+                },
+                {
+                  file: '005_topic_stats_rpc.sql',
+                  desc: 'RPC function for topic-level analytics and counts across domains.'
+                },
+                {
+                  file: '006_create_page_publishing_settings.sql',
+                  desc: 'Creates page_publishing_settings table, RLS read/write policies, and default coming_soon records.'
                 }
               ].map((m, idx) => (
                 <div

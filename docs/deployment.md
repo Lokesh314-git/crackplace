@@ -154,3 +154,68 @@ While the backend contains a self-healing background heartbeat scheduler on serv
 - **Strict Data Preservation**: User XP, levels, coins, cosmetics, inventory, battle history, and accounts are **never reset or deleted**.
 - **Complete Idempotency**: Each user document records `lastSeasonResetId`. Once processed for a season, subsequent runs in the same week skip the player without applying duplicate reduction.
 
+---
+
+## 8. Admin-Controlled Page Publishing & Coming Soon Architecture
+
+### A. Managed Pages & Default Behavior
+The system controls the publishing lifecycle for two flagship modules:
+1. **Study Notes**: `/study-notes` (key: `study_notes`)
+2. **Coding Workspace**: `/coding` (key: `coding_workspace`)
+
+- **Default Status**: Both pages default to `coming_soon` unless explicitly configured and saved as `published` by an administrator.
+- **Fail-Safe Client Policy**: If network or backend requests fail, the client defaults to `coming_soon` to guarantee unpublished tools and generators are never exposed.
+
+### B. Supabase Database Migration
+Execute migration file `question-bank-manager/supabase/migrations/006_create_page_publishing_settings.sql` in the Supabase SQL Editor:
+```sql
+CREATE TABLE IF NOT EXISTS public.page_publishing_settings (
+    page_key TEXT PRIMARY KEY,
+    status TEXT NOT NULL DEFAULT 'coming_soon' CHECK (status IN ('coming_soon', 'published')),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_by TEXT DEFAULT 'system'
+);
+
+-- Row Level Security (RLS)
+ALTER TABLE public.page_publishing_settings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read access for page publishing status"
+    ON public.page_publishing_settings FOR SELECT
+    TO anon, authenticated
+    USING (true);
+
+CREATE POLICY "Allow service role full access to page publishing settings"
+    ON public.page_publishing_settings FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
+
+-- Seed initial records defaulting to coming_soon
+INSERT INTO public.page_publishing_settings (page_key, status, updated_at, updated_by)
+VALUES
+    ('study_notes', 'coming_soon', NOW(), 'system_init'),
+    ('coding_workspace', 'coming_soon', NOW(), 'system_init')
+ON CONFLICT (page_key) DO NOTHING;
+```
+
+### C. API Endpoints
+- **Public**: `GET /api/page-publishing/status` (optional `?pageKey=study_notes`)
+  - Returns minimal student-safe payload: `{"study_notes":"coming_soon","coding_workspace":"coming_soon"}`
+- **Admin**: `GET /api/admin/page-publishing` (Requires admin token)
+  - Returns full management metadata, status, updated_at timestamp, and updated_by identifier.
+- **Admin**: `POST /api/admin/page-publishing/:pageKey` (Requires admin token)
+  - Accepts `{"status": "published" | "coming_soon"}`.
+  - Updates Supabase and dual-driver storage, records audit log in Firestore, and updates in-memory cache instantly.
+- **Server Guard**: Generation endpoints `/api/study/notes/generate` and `/api/coding/generate` verify publishing status server-side and reject unauthorized requests with HTTP 403 `PAGE_COMING_SOON`.
+
+### D. Question Bank Manager (Admin Panel)
+- **URL**: `http://localhost:5174/settings?tab=publishing`
+- Navigate to **Settings & API** -> **Page Publishing** tab.
+- Each page has an independent card displaying:
+  - Page name and route
+  - Current status badge (`Coming Soon` or `Published`)
+  - Last updated timestamp formatted in Asia/Kolkata (IST)
+  - Admin email / identifier
+  - Status toggle buttons ("Publish Page" / "Set to Coming Soon") with a confirmation dialog before toggling.
+
+

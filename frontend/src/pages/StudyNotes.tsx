@@ -26,6 +26,7 @@ import rehypeHighlight from 'rehype-highlight';
 import 'highlight.js/styles/github-dark.css';
 
 import { Card, Button, Badge, EmptyState } from '../components/ui';
+import { ComingSoonGuard } from '../components/common/ComingSoonGuard';
 
 interface MCQQuestion {
   questionText: string;
@@ -192,7 +193,7 @@ const MarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
   );
 };
 
-export const StudyNotes: React.FC = () => {
+const StudyNotesContent: React.FC = () => {
   const { token, updateProfile } = useAuthStore();
   const navigate = useNavigate();
 
@@ -1056,6 +1057,14 @@ export const StudyNotes: React.FC = () => {
         </div>
       </div>
     </div>
+  );
+};
+
+export const StudyNotes: React.FC = () => {
+  return (
+    <ComingSoonGuard pageKey="study_notes">
+      <StudyNotesContent />
+    </ComingSoonGuard>
   );
 };
 

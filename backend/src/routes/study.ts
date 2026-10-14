@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { calculateLevelFromXP, calculateLevelProgress, LevelCalculator, syncMissionsState, processMissionProgress, checkAndUnlockAchievements, updateDailyStreak } from '../utils/gamification';
 import { calculatePlacementReadiness } from '../utils/readiness';
 import { XpTransactionService } from '../services/XpTransactionService';
+import { PagePublishingService } from '../services/PagePublishingService';
 
 const router = Router();
 
@@ -99,6 +100,14 @@ function validateAndNormalizeResponse(raw: any, category: string, topic: string,
 router.post('/notes/generate', verifyToken, async (req: AuthenticatedRequest, res) => {
   if (!req.user) {
     return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const isPublished = await PagePublishingService.isPagePublished('study_notes');
+  if (!isPublished && req.user.role !== 'admin') {
+    return res.status(403).json({
+      error: "We're preparing study guides, revision notes, cheat sheets, and practice resources to help you prepare for placements. This feature is coming soon.",
+      code: 'PAGE_COMING_SOON'
+    });
   }
 
   const parseResult = generateNotesSchema.safeParse(req.body);

@@ -7,6 +7,7 @@ import { calculateLevelFromXP, calculateLevelProgress, LevelCalculator, syncMiss
 import { calculatePlacementReadiness } from '../utils/readiness';
 import { XpTransactionService } from '../services/XpTransactionService';
 import { checkAndFulfillReferral } from '../services/referralService';
+import { PagePublishingService } from '../services/PagePublishingService';
 
 const router = Router();
 
@@ -41,6 +42,14 @@ interface CodingProblem {
 router.post('/generate', verifyToken, async (req: AuthenticatedRequest, res) => {
   if (!req.user) {
     return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const isPublished = await PagePublishingService.isPagePublished('coding_workspace');
+  if (!isPublished && req.user.role !== 'admin') {
+    return res.status(403).json({
+      error: "We're building an interactive coding environment to help you practice algorithms and prepare for technical interviews. This feature is coming soon.",
+      code: 'PAGE_COMING_SOON'
+    });
   }
 
   const parseResult = generateCodingSchema.safeParse(req.body);

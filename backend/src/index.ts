@@ -82,6 +82,8 @@ import { adminUsersRouter } from './routes/adminUsers';
 import { adminQuestionsRouter } from './routes/adminQuestions';
 import { seasonsRouter, adminSeasonsRouter } from './routes/seasons';
 import { SeasonService } from './services/SeasonService';
+import { pagePublishingRouter, adminPagePublishingRouter } from './routes/pagePublishing';
+import { PagePublishingService } from './services/PagePublishingService';
 
 // Mount Modular Routers
 app.use('/api/quiz', quizRouter);
@@ -93,6 +95,8 @@ app.use('/api/admin/users', adminUsersRouter);
 app.use('/api/admin/questions', adminQuestionsRouter);
 app.use('/api/seasons', seasonsRouter);
 app.use('/api/admin/seasons', adminSeasonsRouter);
+app.use('/api/page-publishing', pagePublishingRouter);
+app.use('/api/admin/page-publishing', adminPagePublishingRouter);
 
 // ----------------------------------------------------
 // Health & Readiness Probes (Phase 21 & 47)
@@ -1531,6 +1535,13 @@ if (process.env.NODE_ENV !== 'test') {
 
     // Start SeasonService weekly seasonal reset heartbeat scheduler
     SeasonService.startSeasonScheduler();
+
+    // Initialize PagePublishingService settings
+    PagePublishingService.initialize().catch((pubErr) => {
+      logger.warn('[STARTUP] PagePublishingService init encountered an error:', {
+        error: String(pubErr)
+      });
+    });
   });
 }
 

@@ -39,8 +39,26 @@ export async function adminAuth(req: AdminAuthenticatedRequest, res: Response, n
       };
       return next();
     }
+
+    // Check if user has admin role in database
+    try {
+      const userDoc = await db.collection('users').doc(decodedToken.uid).get();
+      if (userDoc.exists && userDoc.data()?.role === 'admin') {
+        req.user = {
+          uid: decodedToken.uid,
+          email: decodedToken.email,
+          role: 'admin',
+          source: 'firebase'
+        };
+        return next();
+      }
+    } catch {
+      // Non-fatal
+    }
+
+    return res.status(403).json({ error: 'Forbidden: Insufficient administrator permissions' });
   } catch (error) {
-    // Fall back to Supabase
+    // If not a valid Firebase token, fall back to Supabase
   }
 
   try {

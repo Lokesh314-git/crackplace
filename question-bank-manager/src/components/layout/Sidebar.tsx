@@ -16,7 +16,8 @@ import {
   Banknote,
   Settings2,
   ClipboardList,
-  UserCog
+  UserCog,
+  Globe
 } from 'lucide-react';
 import { isSupabaseConfigured } from '../../lib/supabase';
 
@@ -33,6 +34,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     { to: '/add-question', label: 'Add Question', icon: PlusCircle },
     { to: '/import-csv', label: 'Import CSV', icon: FileUp, badge: 'Batch' },
     { to: '/subjects', label: 'Subjects', icon: Layers },
+    { to: '/settings?tab=publishing', label: 'Page Publishing', icon: Globe },
     { to: '/settings', label: 'Settings & API', icon: Settings }
   ];
 
