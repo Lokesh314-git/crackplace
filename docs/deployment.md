@@ -125,3 +125,32 @@ ADMIN_EMAILS=lokesh.8637427067@gmail.com,admin@crackplace.ai
 1. Verify the `questions` table exists with proper indexes on `subject`, `difficulty`, and `topic`.
 2. Verify Row Level Security (RLS) policies allow public `SELECT` for active questions.
 3. Ensure service-role key is never shared on the client.
+
+---
+
+## 6. Weekly Seasonal Elo Reset & Scheduler Configuration
+
+The seasonal system resets competitive Elo ratings every **Monday at 12:00:00 AM (00:00:00) IST (Asia/Kolkata)**.
+
+### A. Render Cron Job Setup (Recommended)
+While the backend contains a self-healing background heartbeat scheduler on server boot and every 60 seconds, configuring a Render Cron Job guarantees execution even if the backend web service spins down during inactivity or maintenance.
+
+1. In your **Render Dashboard**, click **New +** → **Cron Job**.
+2. Connect your `crackplace-backend` repository or use an HTTP trigger job.
+3. **Schedule**: `30 18 * * 0`
+   - *Note on Timezones*: Render cron runs in UTC. Sunday at 18:30 UTC corresponds precisely to **Monday at 00:00 IST (UTC +5:30)**.
+4. **Command**:
+   ```bash
+   curl -s -X POST https://crackplace-backend-lfs5.onrender.com/api/seasons/reset \
+     -H "x-scheduler-secret: $SCHEDULER_SECRET"
+   ```
+5. **Environment Variables**:
+   - `SCHEDULER_SECRET`: `crackplace_scheduler_secret_prod_2026` (or any custom secret configured in your backend environment variables).
+
+### B. Rating Reduction & Safety Guarantees
+- **Formula**: `newElo = Math.round(currentElo * (1 - reductionPercentage / 100))`
+- **Admin Configuration**: Whole number between 10% and 30% (default: 20%), configured from the local Question Bank Manager (`http://localhost:5174/settings`).
+- **Elo Floor**: Guaranteed minimum floor (default: 100). Elo will never drop below this floor or become zero/negative.
+- **Strict Data Preservation**: User XP, levels, coins, cosmetics, inventory, battle history, and accounts are **never reset or deleted**.
+- **Complete Idempotency**: Each user document records `lastSeasonResetId`. Once processed for a season, subsequent runs in the same week skip the player without applying duplicate reduction.
+

@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
-import { FaCrown, FaMagnifyingGlass, FaArrowRotateRight, FaCircleExclamation, FaTrophy } from 'react-icons/fa6';
+import { FaCrown, FaMagnifyingGlass, FaArrowRotateRight, FaCircleExclamation, FaTrophy, FaLock, FaRegClock, FaBolt, FaGraduationCap } from 'react-icons/fa6';
 import { getUserAvatarUrl, getAvatarImageUrl, SYSTEM_DEFAULT_AVATAR_VISUAL } from '../utils/avatarResolver';
 import { checkIsLegendaryPlayer } from '../config/cosmetics';
 import { ProfilePreviewModal } from '../components/profile/ProfilePreviewModal';
@@ -28,6 +29,29 @@ interface LeaderboardUser {
   isDeleted?: boolean;
 }
 
+interface SeasonInfo {
+  seasonId: string;
+  seasonNumber: number;
+  startDate: string;
+  endDate: string;
+  nextResetTimestamp: string;
+  timeRemainingMs: number;
+  reductionPercentage: number;
+  decayEnabled: boolean;
+  timezone: string;
+}
+
+interface LeaderboardLockDetails {
+  locked: boolean;
+  message: string;
+  currentLevel: number;
+  requiredLevel: number;
+  currentXp: number;
+  requiredXpForLevel3: number;
+  xpNeeded: number;
+  progressPercentage: number;
+}
+
 export const Leaderboards: React.FC = () => {
   const { token, userProfile } = useAuthStore();
   const [ranks, setRanks] = useState<LeaderboardUser[]>([]);
@@ -39,6 +63,29 @@ export const Leaderboards: React.FC = () => {
   const [selectedUser, setSelectedUser] = useState<LeaderboardUser | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
+
+  // Season countdown state
+  const [seasonInfo, setSeasonInfo] = useState<SeasonInfo | null>(null);
+  const [countdownText, setCountdownText] = useState<string>('');
+
+  // Lock state for users below Level 3
+  const [lockDetails, setLockDetails] = useState<LeaderboardLockDetails | null>(null);
+
+  const fetchSeasonDetails = useCallback(async () => {
+    try {
+      const res = await fetch('/api/seasons/current');
+      if (res.ok) {
+        const data = await res.json();
+        setSeasonInfo(data);
+      }
+    } catch {
+      // Non-fatal fallback
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSeasonDetails();
+  }, [fetchSeasonDetails]);
 
   const handleUserClick = (user: LeaderboardUser, actualRank: number) => {
     setSelectedUser({ ...user, rank: actualRank });
@@ -67,11 +114,29 @@ export const Leaderboards: React.FC = () => {
       const data = await res.json();
 
       if (!res.ok) {
+        if (data.locked || data.code === 'LEADERBOARD_LOCKED') {
+          setLockDetails({
+            locked: true,
+            message: data.message || 'Reach Level 3 to unlock competitive rankings.',
+            currentLevel: data.currentLevel || 1,
+            requiredLevel: data.requiredLevel || 3,
+            currentXp: data.currentXp || 0,
+            requiredXpForLevel3: data.requiredXpForLevel3 || 250,
+            xpNeeded: data.xpNeeded || 250,
+            progressPercentage: data.progressPercentage || 0
+          });
+          setRanks([]);
+          setLoading(false);
+          return;
+        }
+
         const errorMsg = typeof data.error === 'object' && data.error !== null 
           ? (data.error.message || JSON.stringify(data.error)) 
           : data.error;
         throw new Error(errorMsg || 'Failed to load leaderboard data.');
       }
+
+      setLockDetails(null);
 
       const rawUserList: LeaderboardUser[] = Array.isArray(data) ? data : (data.users || []);
       // Defense-in-depth: Exclude any soft-deleted, tombstoned, or blocked accounts and guarantee sequential ranks
@@ -101,6 +166,41 @@ export const Leaderboards: React.FC = () => {
     setExpanded(false); // Reset expansion when tab changes
     fetchLeaderboard(tab);
   }, [tab, fetchLeaderboard]);
+
+  // Second-by-second countdown ticker for active season
+  useEffect(() => {
+    if (!seasonInfo?.nextResetTimestamp) return;
+
+    const updateCountdown = () => {
+      const end = new Date(seasonInfo.nextResetTimestamp).getTime();
+      const now = Date.now();
+      const diff = end - now;
+
+      if (diff <= 0) {
+        setCountdownText('Resetting season...');
+        fetchSeasonDetails();
+        fetchLeaderboard(tab);
+        return;
+      }
+
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+      if (days > 0) {
+        setCountdownText(`${days}d ${hours}h ${minutes}m`);
+      } else if (hours > 0) {
+        setCountdownText(`${hours}h ${minutes}m ${seconds}s`);
+      } else {
+        setCountdownText(`${minutes}m ${seconds}s`);
+      }
+    };
+
+    updateCountdown();
+    const timer = setInterval(updateCountdown, 1000);
+    return () => clearInterval(timer);
+  }, [seasonInfo, fetchSeasonDetails, fetchLeaderboard, tab]);
 
   // Listen for battle/XP completion events to refresh leaderboard live
   useEffect(() => {
@@ -140,14 +240,32 @@ export const Leaderboards: React.FC = () => {
   const currentUserRankIndex = userProfile ? ranks.findIndex(r => r.uid === userProfile.uid) : -1;
   const currentUserRankDisplay = currentUserRankIndex >= 0 ? `#${currentUserRankIndex + 1}` : 'Unranked';
 
+  const isUserLocked = Boolean(
+    lockDetails?.locked ||
+    (userProfile && (userProfile.level || 1) < 3 && userProfile.role !== 'admin')
+  );
+
+  const displayCurrentLevel = lockDetails?.currentLevel ?? userProfile?.level ?? 1;
+  const displayCurrentXp = lockDetails?.currentXp ?? userProfile?.xp ?? 0;
+  const displayTargetXp = lockDetails?.requiredXpForLevel3 ?? 250;
+  const displayXpNeeded = lockDetails?.xpNeeded ?? Math.max(0, displayTargetXp - displayCurrentXp);
+  const displayProgressPct = lockDetails?.progressPercentage ?? Math.min(100, Math.round((displayCurrentXp / displayTargetXp) * 100));
+
   return (
     <div className="space-y-6 max-w-4xl mx-auto pb-16 animate-fade-in">
       {/* Header banner */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b border-border-dark">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="w-2 h-2 rounded-full bg-brand-500"></span>
             <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">Placement Standings</span>
+            {seasonInfo && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-brand-500/10 border border-brand-500/20 text-[11px] font-semibold text-brand-400">
+                <FaRegClock className="w-3 h-3 shrink-0" />
+                <span>Season {seasonInfo.seasonNumber || 1} ends in:</span>
+                <span className="font-mono font-bold text-text-primary">{countdownText || 'Calculating...'}</span>
+              </span>
+            )}
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-text-primary tracking-tight mt-1">Global Rankings</h1>
           <p className="text-text-secondary text-sm mt-0.5">
@@ -215,6 +333,58 @@ export const Leaderboards: React.FC = () => {
           <div className="h-14 bg-surface-dark border border-border-dark rounded-xl animate-pulse"></div>
           <div className="h-14 bg-surface-dark border border-border-dark rounded-xl animate-pulse"></div>
           <div className="h-14 bg-surface-dark border border-border-dark rounded-xl animate-pulse"></div>
+        </div>
+      ) : isUserLocked ? (
+        /* Dedicated Locked Screen for Level < 3 */
+        <div className="bg-surface-dark border border-border-dark p-8 sm:p-12 rounded-2xl text-center space-y-6 shadow-xs max-w-xl mx-auto my-8 animate-fade-in">
+          <div className="w-16 h-16 mx-auto rounded-full bg-brand-500/10 border border-brand-500/30 flex items-center justify-center text-brand-400 text-2xl shadow-inner">
+            <FaLock className="w-7 h-7" />
+          </div>
+
+          <div className="space-y-2">
+            <h2 className="text-xl sm:text-2xl font-bold text-text-primary tracking-tight">Leaderboard Locked</h2>
+            <p className="text-sm text-text-secondary max-w-md mx-auto">
+              Reach <span className="font-semibold text-brand-400">Level 3</span> to unlock competitive rankings.
+            </p>
+          </div>
+
+          <div className="p-4 rounded-xl bg-surface-elevated/60 border border-border-dark space-y-3 text-left">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-text-muted font-medium">Progression to Unlocking</span>
+              <span className="font-semibold text-text-primary">
+                Level {displayCurrentLevel} / 3
+              </span>
+            </div>
+
+            <div className="w-full bg-surface-dark h-2.5 rounded-full overflow-hidden border border-border-dark">
+              <div
+                className="bg-brand-500 h-full rounded-full transition-all duration-500"
+                style={{ width: `${Math.min(100, Math.max(0, displayProgressPct))}%` }}
+              />
+            </div>
+
+            <div className="flex items-center justify-between text-[11px] text-text-muted">
+              <span>{displayCurrentXp} XP earned</span>
+              <span className="text-brand-400 font-semibold">{displayXpNeeded} XP needed to reach Level 3</span>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+            <Link
+              to="/practice"
+              className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold text-xs sm:text-sm transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <FaGraduationCap className="w-4 h-4" />
+              <span>Continue Practicing</span>
+            </Link>
+            <Link
+              to="/battle"
+              className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 border border-border-dark text-text-primary font-semibold text-xs sm:text-sm transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <FaBolt className="w-3.5 h-3.5 text-brand-400" />
+              <span>Battle Arena</span>
+            </Link>
+          </div>
         </div>
       ) : ranks.length === 0 && !error ? (
         /* Empty database state */

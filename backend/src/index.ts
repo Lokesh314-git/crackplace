@@ -80,6 +80,8 @@ app.use(standardApiLimiter);
 
 import { adminUsersRouter } from './routes/adminUsers';
 import { adminQuestionsRouter } from './routes/adminQuestions';
+import { seasonsRouter, adminSeasonsRouter } from './routes/seasons';
+import { SeasonService } from './services/SeasonService';
 
 // Mount Modular Routers
 app.use('/api/quiz', quizRouter);
@@ -89,6 +91,8 @@ app.use('/api/study', studyRouter);
 app.use('/api/invite-promote', invitePromoteRouter);
 app.use('/api/admin/users', adminUsersRouter);
 app.use('/api/admin/questions', adminQuestionsRouter);
+app.use('/api/seasons', seasonsRouter);
+app.use('/api/admin/seasons', adminSeasonsRouter);
 
 // ----------------------------------------------------
 // Health & Readiness Probes (Phase 21 & 47)
@@ -362,6 +366,38 @@ app.post('/api/auth/verify', strictAuthLimiter, verifyToken, async (req: Authent
 // Server-Authoritative Leaderboard (Global & Weekly Sprint)
 // ----------------------------------------------------
 app.get('/api/leaderboard', verifyToken, async (req: AuthenticatedRequest, res) => {
+  // FIX 2: Authoritatively protect leaderboard data - Level 3+ required
+  const callerId = req.user?.uid;
+  if (callerId) {
+    try {
+      const callerDoc = await db.collection('users').doc(callerId).get();
+      const callerData = callerDoc && callerDoc.exists ? callerDoc.data() || {} : {};
+      const callerXp = Number(callerData.totalXp ?? callerData.xp ?? 0);
+      const callerLevel = calculateLevelFromXP(callerXp);
+      const isCallerAdmin = req.user?.role === 'admin' || callerData.role === 'admin';
+
+      if (callerLevel < 3 && !isCallerAdmin) {
+        const level3Xp = LevelCalculator.getXpRequiredForLevel(2); // 250 XP
+        const xpNeeded = Math.max(0, level3Xp - callerXp);
+        const progressPercentage = Math.min(100, Math.round((callerXp / level3Xp) * 100));
+
+        return res.status(403).json({
+          locked: true,
+          code: 'LEADERBOARD_LOCKED',
+          message: 'Reach Level 3 to unlock competitive rankings.',
+          currentLevel: callerLevel,
+          requiredLevel: 3,
+          currentXp: callerXp,
+          requiredXpForLevel3: level3Xp,
+          xpNeeded,
+          progressPercentage
+        });
+      }
+    } catch (checkErr) {
+      logger.warn('Failed to verify caller level for leaderboard access', { error: String(checkErr) });
+    }
+  }
+
   const rankingType = req.query.type === 'weekly' ? 'weekly' : 'global';
   const limitCount = Math.min(100, Math.max(1, Number(req.query.limit) || 100));
   const cacheKey = `leaderboard:${rankingType}:${limitCount}`;
@@ -1492,6 +1528,9 @@ if (process.env.NODE_ENV !== 'test') {
         error: String(cleanupErr)
       });
     });
+
+    // Start SeasonService weekly seasonal reset heartbeat scheduler
+    SeasonService.startSeasonScheduler();
   });
 }
 
