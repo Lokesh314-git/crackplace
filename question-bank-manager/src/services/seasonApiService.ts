@@ -27,12 +27,28 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
   }
   
   if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error('Unauthorized: Admin session expired or token missing. Please re-authenticate.');
+    }
+    if (response.status === 403) {
+      throw new Error('Forbidden: Your account does not have administrator privileges to manage season settings.');
+    }
+    if (response.status === 404) {
+      throw new Error('Endpoint not found (404). Render backend deployment may still be building or updating.');
+    }
+    if (response.status === 502 || response.status === 503) {
+      throw new Error(`Backend unavailable (${response.status}). Render instance may be waking up from cold sleep. Please wait a few seconds and retry.`);
+    }
+
     let errText = '';
-    try {
-      const errData = await response.json();
-      errText = errData.error || errData.message || JSON.stringify(errData);
-    } catch {
-      errText = await response.text();
+    const rawText = await response.text().catch(() => '');
+    if (rawText) {
+      try {
+        const errData = JSON.parse(rawText);
+        errText = errData.error || errData.message || JSON.stringify(errData);
+      } catch {
+        errText = rawText;
+      }
     }
     throw new Error(errText || `API error (${response.status})`);
   }
