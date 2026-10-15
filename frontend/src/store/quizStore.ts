@@ -5,6 +5,7 @@ export interface Question {
   questionText: string;
   options: string[];
   correctOptionIndex?: number;
+  correctOption?: number;
   correctAnswer?: string;
   correctOptionText?: string;
   explanation?: string;
@@ -116,15 +117,29 @@ export const useQuizStore = create<QuizState>((set) => ({
     timeSpentSeconds: state.timeSpentSeconds + 1
   })),
 
-  finishQuiz: (results, reviewQuestions) => set((state) => ({
-    quizStatus: 'finished',
-    results,
-    reviewQuestions: reviewQuestions || null,
-    currentQuiz: state.currentQuiz && reviewQuestions ? {
-      ...state.currentQuiz,
-      questions: reviewQuestions
-    } : state.currentQuiz
-  })),
+  finishQuiz: (results, reviewQuestions) => set((state) => {
+    const finalReview = Array.isArray(reviewQuestions) && reviewQuestions.length > 0 
+      ? reviewQuestions 
+      : state.currentQuiz?.questions || [];
+
+    return {
+      quizStatus: 'finished',
+      results,
+      reviewQuestions: finalReview.length > 0 ? finalReview : null,
+      currentQuiz: state.currentQuiz ? {
+        ...state.currentQuiz,
+        questions: finalReview.length > 0 ? finalReview : state.currentQuiz.questions
+      } : (finalReview.length > 0 ? {
+        id: state.activeAttemptId || 'quiz_review',
+        category: state.activeCategory || 'general',
+        difficulty: 'medium',
+        language: 'English',
+        company: 'General',
+        questions: finalReview,
+        createdAt: new Date().toISOString()
+      } : null)
+    };
+  }),
 
   resetQuizState: () => set({ 
     currentQuiz: null, 

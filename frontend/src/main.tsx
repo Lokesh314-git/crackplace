@@ -16,14 +16,29 @@ window.fetch = (input, init) => {
   return originalFetch(input, init);
 };
 
-// Register Service Worker
+// Proactively purge obsolete service worker caches in client browser
+if ('caches' in window) {
+  caches.keys().then((keys) => {
+    keys.forEach((key) => {
+      if (key === 'crackplace-cache-v1') {
+        caches.delete(key).then(() => console.log('[SW Cache] Evicted legacy cache:', key));
+      }
+    });
+  }).catch(() => {});
+}
+
+// Register Service Worker with auto-update
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     const base = import.meta.env.BASE_URL ? import.meta.env.BASE_URL.replace(/\/$/, '') : '';
     const swPath = `${base}/sw.js`;
     navigator.serviceWorker.register(swPath)
-      .then(reg => console.log('Service Worker registered successfully:', reg.scope))
-      .catch(err => console.error('Service Worker registration failed:', err));
+      .then((reg) => {
+        console.log('Service Worker registered successfully:', reg.scope);
+        // Check for updates on every page load
+        reg.update().catch(() => {});
+      })
+      .catch((err) => console.error('Service Worker registration failed:', err));
   });
 }
 

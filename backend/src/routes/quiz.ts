@@ -14,9 +14,18 @@ const router = Router();
 /**
  * Resolves verified explanation or reliable fallback text
  */
-export function resolveQuestionExplanation(q: any): string {
-  if (q.explanation && typeof q.explanation === 'string' && q.explanation.trim().length > 0) {
+export function resolveQuestionExplanation(q: any, correctOptionText?: string): string {
+  if (q.explanation && typeof q.explanation === 'string' && q.explanation.trim().length > 0 && q.explanation.trim() !== 'Explanation not available for this question yet') {
     return q.explanation.trim();
+  }
+  if (q.solution && typeof q.solution === 'string' && q.solution.trim().length > 0) {
+    return q.solution.trim();
+  }
+  if (q.answer_explanation && typeof q.answer_explanation === 'string' && q.answer_explanation.trim().length > 0) {
+    return q.answer_explanation.trim();
+  }
+  if (correctOptionText && typeof correctOptionText === 'string' && correctOptionText.trim().length > 0) {
+    return `The correct answer is "${correctOptionText.trim()}". Standard assessment guidelines and rules apply to this question.`;
   }
   return 'Explanation not available for this question yet';
 }
@@ -36,23 +45,27 @@ export async function enrichQuestionsWithExplanations(questions: any[]): Promise
   const ids = missing.map(q => q.id).filter(Boolean);
   if (ids.length > 0 && supabase) {
     try {
-      const { data } = await supabase
-        .from('questions')
-        .select('id, question_id, explanation, correct_answer')
-        .or(`id.in.(${ids.map(id => `"${id}"`).join(',')}),question_id.in.(${ids.map(id => `"${id}"`).join(',')})`);
+      // Escape or quote IDs cleanly for PostgREST
+      const formattedIds = ids.map(id => String(id).replace(/[",]/g, '')).filter(Boolean);
+      if (formattedIds.length > 0) {
+        const { data } = await supabase
+          .from('questions')
+          .select('id, question_id, explanation, correct_answer')
+          .or(`id.in.(${formattedIds.join(',')}),question_id.in.(${formattedIds.join(',')})`);
 
-      if (data && data.length > 0) {
-        const expMap = new Map<string, string>();
-        for (const row of data) {
-          if (row.explanation && row.explanation.trim().length > 0) {
-            if (row.id) expMap.set(row.id, row.explanation.trim());
-            if (row.question_id) expMap.set(row.question_id, row.explanation.trim());
+        if (data && data.length > 0) {
+          const expMap = new Map<string, string>();
+          for (const row of data) {
+            if (row.explanation && row.explanation.trim().length > 0) {
+              if (row.id) expMap.set(String(row.id), row.explanation.trim());
+              if (row.question_id) expMap.set(String(row.question_id), row.explanation.trim());
+            }
           }
+          return questions.map(q => ({
+            ...q,
+            explanation: q.explanation?.trim() || (q.id ? expMap.get(String(q.id)) : undefined) || resolveQuestionExplanation(q)
+          }));
         }
-        return questions.map(q => ({
-          ...q,
-          explanation: q.explanation?.trim() || expMap.get(q.id) || resolveQuestionExplanation(q)
-        }));
       }
     } catch (err) {
       console.warn('[QUIZ API] Supabase fallback explanation lookup failed:', err);
@@ -72,13 +85,33 @@ export function formatReviewQuestions(questions: any[], userAnswers: Record<stri
   return questions.map((q: any, idx: number) => {
     const submittedVal = userAnswers[String(idx)] ?? userAnswers[idx];
     const isAnswered = typeof submittedVal === 'number' && submittedVal >= 0;
-    const isCorrect = isAnswered && submittedVal === q.correctOptionIndex;
+
+    // Resolve 0-based correct option index across different schema variations
+    const correctIdx = typeof q.correctOptionIndex === 'number'
+      ? q.correctOptionIndex
+      : typeof q.correctOption === 'number'
+      ? q.correctOption
+      : (typeof q.correct_option === 'number' ? q.correct_option : undefined);
 
     let correctOptionText = '';
-    if (Array.isArray(q.options) && typeof q.correctOptionIndex === 'number' && q.options[q.correctOptionIndex] !== undefined) {
-      correctOptionText = String(q.options[q.correctOptionIndex]);
-    } else if (q.correctAnswer && typeof q.correctAnswer === 'string') {
-      correctOptionText = q.correctAnswer;
+    if (Array.isArray(q.options) && typeof correctIdx === 'number' && q.options[correctIdx] !== undefined) {
+      correctOptionText = String(q.options[correctIdx]);
+    } else if (q.correctAnswer && typeof q.correctAnswer === 'string' && q.correctAnswer.trim().length > 0) {
+      const trimmed = q.correctAnswer.trim();
+      if (['A', 'B', 'C', 'D'].includes(trimmed.toUpperCase()) && Array.isArray(q.options) && q.options[trimmed.toUpperCase().charCodeAt(0) - 65]) {
+        correctOptionText = String(q.options[trimmed.toUpperCase().charCodeAt(0) - 65]);
+      } else {
+        correctOptionText = trimmed;
+      }
+    } else if (q.correctOptionText && typeof q.correctOptionText === 'string') {
+      correctOptionText = q.correctOptionText;
+    } else if (q.correct_answer && typeof q.correct_answer === 'string') {
+      const trimmed = q.correct_answer.trim();
+      if (['A', 'B', 'C', 'D'].includes(trimmed.toUpperCase()) && Array.isArray(q.options) && q.options[trimmed.toUpperCase().charCodeAt(0) - 65]) {
+        correctOptionText = String(q.options[trimmed.toUpperCase().charCodeAt(0) - 65]);
+      } else {
+        correctOptionText = trimmed;
+      }
     }
 
     let userOptionText: string | null = null;
@@ -88,14 +121,20 @@ export function formatReviewQuestions(questions: any[], userAnswers: Record<stri
       userOptionText = String(submittedVal);
     }
 
-    const explanation = resolveQuestionExplanation(q);
+    const isCorrect = isAnswered && (
+      (typeof correctIdx === 'number' && submittedVal === correctIdx) ||
+      (Boolean(correctOptionText) && userOptionText !== null && correctOptionText.trim().toLowerCase() === userOptionText.trim().toLowerCase())
+    );
+
+    const explanation = resolveQuestionExplanation(q, correctOptionText);
 
     return {
       id: q.id,
       questionIndex: idx,
-      questionText: q.questionText,
+      questionText: q.questionText || q.question || '',
       options: q.options || [],
-      correctOptionIndex: q.correctOptionIndex,
+      correctOptionIndex: correctIdx,
+      correctOption: correctIdx,
       correctAnswer: correctOptionText,
       correctOptionText,
       userAnswerIndex: isAnswered ? submittedVal : null,
@@ -240,7 +279,12 @@ router.post(['/:quizId/results', '/:quizId/submit'], optionalAuth, async (req: A
     if (payload.answers && typeof payload.answers === 'object') {
       quizData.questions.forEach((q: any, idx: number) => {
         const submitted = payload.answers![String(idx)] ?? payload.answers![idx];
-        if (typeof submitted === 'number' && submitted === q.correctOptionIndex) {
+        const correctIdx = typeof q.correctOptionIndex === 'number'
+          ? q.correctOptionIndex
+          : typeof q.correctOption === 'number'
+          ? q.correctOption
+          : undefined;
+        if (typeof submitted === 'number' && typeof correctIdx === 'number' && submitted === correctIdx) {
           calculatedCorrect++;
         }
       });

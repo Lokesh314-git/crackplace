@@ -240,5 +240,64 @@ describe('Security & Vulnerability Remediation Suite (Phase 3 & Phase 6)', () =>
       expect(reviewItem.correctAnswer).toBe('$13,000');
       expect(reviewItem.explanation).toContain('Ratio is 1:1');
     });
+
+    it('should display correct answer and explanation for verbal ability assessment (resolves user bug)', async () => {
+      const verbalQuizRef = await db.collection('quizzes').add({
+        userId: 'guest_verbal_tester',
+        category: 'verbal_ability',
+        difficulty: 'easy',
+        questions: [
+          {
+            id: 'VA0001',
+            questionText: 'Choose the grammatically correct sentence:',
+            options: [
+              'Neither the manager nor the employees was present.',
+              'Neither the manager nor the employees were present.',
+              'Neither the manager or the employees was present.',
+              'Neither the manager nor the employees are been present.'
+            ],
+            correctOption: 1, // Using correctOption instead of correctOptionIndex
+            explanation: 'In neither...nor constructions, verb agrees with the closer subject ("employees" -> "were").'
+          },
+          {
+            id: 'VA0002',
+            questionText: 'What is the SYNONYM of the word "EPHEMERAL"?',
+            options: ['Eternal', 'Transitory', 'Substantial', 'Enigmatic'],
+            correctOptionIndex: 1,
+            explanation: '' // Missing explanation should trigger intelligent fallback
+          }
+        ],
+        results: null,
+        createdAt: new Date().toISOString()
+      });
+
+      const res = await request(app)
+        .post(`/api/quiz/${verbalQuizRef.id}/submit`)
+        .send({
+          answers: { '0': 3, '1': 0 }, // User picked option 3 ("...are been present.") and option 0 ("Eternal")
+          timeSpentSeconds: 55
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.reviewQuestions).toBeDefined();
+      expect(res.body.reviewQuestions.length).toBe(2);
+
+      // Question 1 verification
+      const q1 = res.body.reviewQuestions[0];
+      expect(q1.isCorrect).toBe(false);
+      expect(q1.userAnswerText).toBe('Neither the manager nor the employees are been present.');
+      expect(q1.correctAnswer).toBe('Neither the manager nor the employees were present.');
+      expect(q1.correctOptionText).toBe('Neither the manager nor the employees were present.');
+      expect(q1.explanation).toContain('In neither...nor constructions');
+
+      // Question 2 verification (with empty explanation fallback)
+      const q2 = res.body.reviewQuestions[1];
+      expect(q2.isCorrect).toBe(false);
+      expect(q2.userAnswerText).toBe('Eternal');
+      expect(q2.correctAnswer).toBe('Transitory');
+      expect(q2.explanation).toBeDefined();
+      expect(q2.explanation.length).toBeGreaterThan(0);
+      expect(q2.explanation).toContain('Transitory');
+    });
   });
 });

@@ -50,6 +50,7 @@ export const PracticeFlow: React.FC = () => {
     timeSpentSeconds,
     quizStatus,
     results,
+    reviewQuestions,
     startQuizGeneration,
     setQuiz,
     selectOption,
@@ -503,11 +504,16 @@ export const PracticeFlow: React.FC = () => {
   }
 
   // State 4: Scoreboard Results
-  if (quizStatus === 'finished' && results && currentQuiz) {
-    if (normalizeSubjectSlug(currentQuiz.category) !== selectedCategory) {
+  if (quizStatus === 'finished' && results && (currentQuiz || (reviewQuestions && reviewQuestions.length > 0))) {
+    const activeCat = currentQuiz?.category || selectedCategory;
+    if (normalizeSubjectSlug(activeCat) !== selectedCategory) {
       return null;
     }
     const isPassing = results.score >= 60;
+    const questionsToDisplay = (reviewQuestions && reviewQuestions.length > 0)
+      ? reviewQuestions
+      : (currentQuiz?.questions || []);
+    const totalQuestionsCount = questionsToDisplay.length || currentQuiz?.questions.length || 5;
 
     return (
       <div className="max-w-3xl mx-auto space-y-6">
@@ -519,7 +525,7 @@ export const PracticeFlow: React.FC = () => {
             Assessment Scorecard
           </h1>
           <p className="text-xs text-slate-500">
-            {currentQuiz.category} • Completed in {formatTime(results.timeTakenSeconds || 0)}
+            {subjectConfig.name} • Completed in {formatTime(results.timeTakenSeconds || 0)}
           </p>
         </div>
 
@@ -531,7 +537,7 @@ export const PracticeFlow: React.FC = () => {
               {results.score}%
             </p>
             <p className="text-[11px] text-slate-500 mt-1">
-              {results.correctAnswers} of {currentQuiz.questions.length} Correct
+              {results.correctAnswers} of {totalQuestionsCount} Correct
             </p>
           </Card>
 
@@ -563,36 +569,71 @@ export const PracticeFlow: React.FC = () => {
           }
         >
           <div className="space-y-4">
-            {currentQuiz.questions.map((q, idx) => {
+            {questionsToDisplay.map((q, idx) => {
               const selectedIdx = selectedAnswers[idx] ?? q.userAnswerIndex;
               const hasAnswered = selectedIdx !== undefined && selectedIdx !== null && selectedIdx >= 0;
-              const isCorrect = q.isCorrect !== undefined
-                ? q.isCorrect
-                : (hasAnswered && typeof q.correctOptionIndex === 'number' && selectedIdx === q.correctOptionIndex);
+
+              // Resolve 0-based correct option index across variations
+              const correctIdx = typeof q.correctOptionIndex === 'number'
+                ? q.correctOptionIndex
+                : typeof q.correctOption === 'number'
+                ? q.correctOption
+                : (typeof (q as any).correct_option === 'number' ? (q as any).correct_option : undefined);
 
               // Correct Answer text resolution
               let displayCorrectAnswer = '';
-              if (q.correctAnswer && typeof q.correctAnswer === 'string' && q.correctAnswer.trim().length > 0) {
-                displayCorrectAnswer = q.correctAnswer.trim();
-              } else if (q.options && typeof q.correctOptionIndex === 'number' && q.options[q.correctOptionIndex]) {
-                displayCorrectAnswer = q.options[q.correctOptionIndex];
+              if (q.correctOptionText && typeof q.correctOptionText === 'string' && q.correctOptionText.trim().length > 0) {
+                displayCorrectAnswer = q.correctOptionText.trim();
+              } else if (q.correctAnswer && typeof q.correctAnswer === 'string' && q.correctAnswer.trim().length > 0) {
+                const trimmed = q.correctAnswer.trim();
+                if (['A', 'B', 'C', 'D'].includes(trimmed.toUpperCase()) && q.options && q.options[trimmed.toUpperCase().charCodeAt(0) - 65]) {
+                  displayCorrectAnswer = q.options[trimmed.toUpperCase().charCodeAt(0) - 65];
+                } else {
+                  displayCorrectAnswer = trimmed;
+                }
+              } else if (q.options && typeof correctIdx === 'number' && q.options[correctIdx]) {
+                displayCorrectAnswer = q.options[correctIdx];
+              } else if ((q as any).correct_answer && typeof (q as any).correct_answer === 'string') {
+                const rawAns = (q as any).correct_answer.trim();
+                if (['A', 'B', 'C', 'D'].includes(rawAns.toUpperCase()) && q.options && q.options[rawAns.toUpperCase().charCodeAt(0) - 65]) {
+                  displayCorrectAnswer = q.options[rawAns.toUpperCase().charCodeAt(0) - 65];
+                } else {
+                  displayCorrectAnswer = rawAns;
+                }
               }
 
               // User Answer text resolution
               let displayUserAnswer = 'Not answered';
               if (hasAnswered) {
-                if (q.userAnswerText) {
+                if (q.userAnswerText && typeof q.userAnswerText === 'string' && q.userAnswerText.trim().length > 0) {
                   displayUserAnswer = q.userAnswerText;
-                } else if (q.options && q.options[selectedIdx]) {
+                } else if (q.options && typeof selectedIdx === 'number' && q.options[selectedIdx]) {
                   displayUserAnswer = q.options[selectedIdx];
                 } else {
                   displayUserAnswer = `Option ${Number(selectedIdx) + 1}`;
                 }
               }
 
-              const explanationText = q.explanation && q.explanation.trim().length > 0
-                ? q.explanation.trim()
-                : 'Explanation not available for this question yet';
+              const isCorrect = q.isCorrect !== undefined
+                ? q.isCorrect
+                : (hasAnswered && (
+                    (typeof correctIdx === 'number' && selectedIdx === correctIdx) ||
+                    (Boolean(displayCorrectAnswer) && displayCorrectAnswer.toLowerCase().trim() === displayUserAnswer.toLowerCase().trim())
+                  ));
+
+              // Explanation resolution
+              let explanationText = '';
+              if (q.explanation && typeof q.explanation === 'string' && q.explanation.trim().length > 0 && q.explanation.trim() !== 'Explanation not available for this question yet') {
+                explanationText = q.explanation.trim();
+              } else if ((q as any).solution && typeof (q as any).solution === 'string' && (q as any).solution.trim().length > 0) {
+                explanationText = (q as any).solution.trim();
+              } else if ((q as any).answer_explanation && typeof (q as any).answer_explanation === 'string' && (q as any).answer_explanation.trim().length > 0) {
+                explanationText = (q as any).answer_explanation.trim();
+              } else if (displayCorrectAnswer) {
+                explanationText = `The correct answer is "${displayCorrectAnswer}". This follows placement assessment standards for ${subjectConfig.name}.`;
+              } else {
+                explanationText = `Explanation for this question is currently being reviewed in the central Question Bank.`;
+              }
 
               return (
                 <div key={idx} className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3 text-xs shadow-xs">
@@ -607,14 +648,14 @@ export const PracticeFlow: React.FC = () => {
 
                   <div className="space-y-1.5 text-slate-700 pt-1">
                     <p className="flex items-baseline gap-1.5 flex-wrap">
-                      <span className="text-slate-500">Your Answer:</span>
+                      <span className="text-slate-500 font-medium">Your Answer:</span>
                       <strong className={`font-semibold ${!hasAnswered ? 'text-slate-500 italic' : isCorrect ? 'text-emerald-700' : 'text-red-700'}`}>
                         {displayUserAnswer}
                       </strong>
                     </p>
                     
                     <p className="flex items-baseline gap-1.5 flex-wrap">
-                      <span className="text-slate-500">Correct Answer:</span>
+                      <span className="text-slate-500 font-medium">Correct Answer:</span>
                       {displayCorrectAnswer ? (
                         <strong className="text-emerald-700 font-semibold">
                           {displayCorrectAnswer}
@@ -628,9 +669,9 @@ export const PracticeFlow: React.FC = () => {
                   </div>
 
                   {/* Step-by-step Solution Card */}
-                  <div className="p-3 rounded-lg bg-white border border-slate-200 text-slate-600 text-xs leading-relaxed mt-2.5">
-                    <strong className="text-slate-800 block mb-1">Explanation:</strong>
-                    <p className="whitespace-pre-line text-slate-700 font-normal">
+                  <div className="p-3 rounded-lg bg-white border border-slate-200 text-slate-700 text-xs leading-relaxed mt-2.5">
+                    <strong className="text-slate-900 block mb-1 font-semibold">Explanation:</strong>
+                    <p className="whitespace-pre-line text-slate-600 font-normal">
                       {explanationText}
                     </p>
                   </div>
