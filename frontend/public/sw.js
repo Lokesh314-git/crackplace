@@ -1,4 +1,4 @@
-const CACHE_NAME = 'crackplace-cache-v2';
+const CACHE_NAME = 'crackplace-cache-v3';
 const STATIC_ASSETS = [
   './favicon.svg',
   './manifest.json'

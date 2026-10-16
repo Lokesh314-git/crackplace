@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
 import Navbar from './Navbar';
-import { Outlet, NavLink, useLocation } from 'react-router-dom';
-import AIAssistant from '../AIAssistant';
+import { Outlet, NavLink } from 'react-router-dom';
 import { 
   FaHouse, 
   FaCode, 
@@ -23,7 +22,6 @@ import { Modal, Button } from '../ui';
 
 export const DashboardLayout: React.FC = () => {
   const { userProfile } = useAuthStore();
-  const location = useLocation();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [showLevelUpModal, setShowLevelUpModal] = useState<{ levelBefore?: number; levelAfter: number; earnedXp?: number } | null>(null);
   const [activeToast, setActiveToast] = useState<{ id: string; type: string; title: string; message: string } | null>(null);
@@ -200,11 +198,6 @@ export const DashboardLayout: React.FC = () => {
           ))}
         </div>
       </nav>
-
-      {/* Floating AI Placement Assistant */}
-      {!location.pathname.includes('/battle') && !location.pathname.includes('/practice') && (
-        <AIAssistant />
-      )}
 
       {/* Level Up Notification Modal */}
       <Modal
