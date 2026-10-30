@@ -5,8 +5,9 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
-    "build": "tsc",
+    "build": "tsc && node src/scripts/copy-assets.js",
     "start": "node dist/index.js",
+    "ingest:csv": "ts-node src/scripts/import-csv-questions.ts",
     "ingest:mmlu": "ts-node-dev src/scripts/ingest-mmlu.ts",
     "ingest:hellaswag": "ts-node-dev src/scripts/ingest-hellaswag.ts",
     "ingest:all": "ts-node-dev src/scripts/ingest-all.ts",

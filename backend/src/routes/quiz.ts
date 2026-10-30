@@ -264,7 +264,11 @@ router.post('/generate', optionalAuth, async (req: AuthenticatedRequest, res) =>
     });
   } catch (error: any) {
     console.error('[QUIZ API] Question retrieval failed:', error);
-    const isClientError = error.message && (error.message.includes('No questions found') || error.message.includes('Not enough questions'));
+    const isClientError = error.message && (
+      error.message.includes('No questions found') ||
+      error.message.includes('Not enough') ||
+      error.message.includes('questions available')
+    );
     res.status(isClientError ? 400 : 500).json({ 
       error: error.message || 'Unable to load quiz from Question Bank. Please try again.',
       code: isClientError ? 'INSUFFICIENT_QUESTIONS' : 'SERVER_ERROR'

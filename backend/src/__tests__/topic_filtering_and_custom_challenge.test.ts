@@ -67,12 +67,12 @@ describe('Strict Topic Filtering & Custom Challenge Verification Suite', () => {
     });
 
     it('TEST 4: Insufficient questions returns clear message and never silently fills with unrelated topics', async () => {
-      // Requesting an excessive number of questions for a specific topic (more than available)
+      // Requesting more questions than available for a small topic (Algebra has 2 questions)
       await expect(
         QuestionService.getPracticeQuestions({
           category: 'quantitative_aptitude',
-          topic: 'Time and Speed',
-          count: 50
+          topic: 'Algebra',
+          count: 10
         })
       ).rejects.toThrow(/Not enough questions available/i);
 
@@ -81,8 +81,8 @@ describe('Strict Topic Filtering & Custom Challenge Verification Suite', () => {
         .post('/api/quiz/generate')
         .send({
           category: 'quantitative_aptitude',
-          topic: 'Time and Speed',
-          count: 50
+          topic: 'Algebra',
+          count: 10
         });
 
       expect(res.status).toBe(400);
@@ -90,6 +90,23 @@ describe('Strict Topic Filtering & Custom Challenge Verification Suite', () => {
       expect(res.body.error).toContain('Not enough questions available');
       // Must not return questions
       expect(res.body.questions).toBeUndefined();
+    });
+
+    it('TEST 4B: Exact user scenario - Quantitative Aptitude -> Time and Speed -> Problems on Trains (Medium, count 5)', async () => {
+      const result = await QuestionService.getPracticeQuestions({
+        category: 'quantitative_aptitude',
+        topic: 'Time and Speed',
+        subtopic: 'Problems on Trains',
+        preferredDifficulty: 'Medium',
+        count: 5
+      });
+
+      expect(result.questions.length).toBe(5);
+      for (const q of result.questions) {
+        expect(isTopicMatch(q.topic, 'Time and Speed')).toBe(true);
+        expect(isSubtopicMatch(q.subtopic, 'Problems on Trains')).toBe(true);
+        expect(q.difficulty.toLowerCase()).toBe('medium');
+      }
     });
 
     it('TEST 5: Practice API endpoint returns sanitized questions without leaking answers', async () => {

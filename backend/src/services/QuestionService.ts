@@ -18,11 +18,22 @@ function getCuratedBank(): Question[] {
     return cachedCuratedQuestions;
   }
   try {
-    const dataPath = path.join(__dirname, '../data/curatedQuestions.json');
-    if (fs.existsSync(dataPath)) {
-      const raw = fs.readFileSync(dataPath, 'utf8');
-      cachedCuratedQuestions = JSON.parse(raw);
-      return cachedCuratedQuestions || [];
+    const candidatePaths = [
+      path.join(__dirname, '../data/curatedQuestions.json'),
+      path.join(__dirname, '../../src/data/curatedQuestions.json'),
+      path.join(process.cwd(), 'src/data/curatedQuestions.json'),
+      path.join(process.cwd(), 'dist/data/curatedQuestions.json'),
+      path.join(process.cwd(), 'backend/src/data/curatedQuestions.json'),
+      path.join(process.cwd(), 'backend/dist/data/curatedQuestions.json')
+    ];
+    for (const dataPath of candidatePaths) {
+      if (fs.existsSync(dataPath)) {
+        const raw = fs.readFileSync(dataPath, 'utf8');
+        cachedCuratedQuestions = JSON.parse(raw);
+        if (cachedCuratedQuestions && cachedCuratedQuestions.length > 0) {
+          return cachedCuratedQuestions;
+        }
+      }
     }
   } catch (err: any) {
     logger.warn('[QuestionService] Could not read curatedQuestions.json', { error: err.message });
@@ -334,12 +345,10 @@ export class QuestionService {
           return true;
         });
 
-        // Add matching local questions (prioritizing preferred difficulty)
+        // Add matching local questions
         for (const q of localMatching) {
           if (!uniqueMap.has(q.id)) {
-            if (isMixed || q.difficulty.toLowerCase() === diffUpper.toLowerCase() || uniqueMap.size < count) {
-              uniqueMap.set(q.id, q);
-            }
+            uniqueMap.set(q.id, q);
           }
         }
 
@@ -351,19 +360,29 @@ export class QuestionService {
           throw new Error(`No questions found matching your selected ${filterDescriptor}. Please choose another topic or difficulty.`);
         }
 
-        if (uniqueMap.size < count) {
-          throw new Error(`Not enough questions available for ${filterDescriptor}. Only ${uniqueMap.size} question(s) found in the question bank, but ${count} were requested. Please select a lower question count or try another topic.`);
+        // Filter strictly by preferred difficulty if specified
+        let candidates = Array.from(uniqueMap.values());
+        if (!isMixed && ['Easy', 'Medium', 'Hard'].includes(diffUpper)) {
+          const diffMatches = candidates.filter(q => q.difficulty.toLowerCase() === diffUpper.toLowerCase());
+          if (diffMatches.length >= count) {
+            candidates = diffMatches;
+          } else if (diffMatches.length > 0) {
+            throw new Error(`Not enough questions available for ${filterDescriptor} with ${diffUpper} difficulty. Only ${diffMatches.length} question(s) found with difficulty "${diffUpper}", but ${count} were requested. Please select a lower question count or try another difficulty.`);
+          } else {
+            throw new Error(`No questions found with difficulty "${diffUpper}" matching your selected ${filterDescriptor}. Please choose another difficulty.`);
+          }
+        } else if (candidates.length < count) {
+          throw new Error(`Not enough questions available for ${filterDescriptor}. Only ${candidates.length} question(s) found in the question bank, but ${count} were requested. Please select a lower question count or try another topic.`);
         }
 
         // D. Random selection strictly from matching topic pool
-        const matchingPool = Array.from(uniqueMap.values());
-        for (let i = matchingPool.length - 1; i > 0; i--) {
+        for (let i = candidates.length - 1; i > 0; i--) {
           const j = Math.floor(Math.random() * (i + 1));
-          [matchingPool[i], matchingPool[j]] = [matchingPool[j], matchingPool[i]];
+          [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
         }
 
         return {
-          questions: matchingPool.slice(0, count),
+          questions: candidates.slice(0, count),
           matchedTopicCount,
           requestedCount: count
         };
