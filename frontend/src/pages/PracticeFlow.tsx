@@ -66,6 +66,8 @@ export const PracticeFlow: React.FC = () => {
   const subjectConfig = SUBJECT_LIST.find(s => s.slug === selectedCategory) || SUBJECT_LIST[0];
   const [selectedTopic, setSelectedTopic] = useState('All');
   const [availableTopics, setAvailableTopics] = useState<string[]>([]);
+  const [selectedSubtopic, setSelectedSubtopic] = useState('All');
+  const [availableSubtopics, setAvailableSubtopics] = useState<string[]>([]);
   const [selectedDifficulty, setSelectedDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [selectedCount, setSelectedCount] = useState(5);
   // Local UI status
@@ -148,10 +150,29 @@ export const PracticeFlow: React.FC = () => {
       if (isMounted) {
         setAvailableTopics(topics);
         setSelectedTopic('All');
+        setSelectedSubtopic('All');
+        setAvailableSubtopics([]);
       }
     });
     return () => { isMounted = false; };
   }, [selectedCategory]);
+
+  // Load available subtopics whenever topic changes
+  useEffect(() => {
+    let isMounted = true;
+    if (selectedTopic && selectedTopic !== 'All') {
+      questionService.getSubtopics(selectedCategory, selectedTopic).then((subs) => {
+        if (isMounted) {
+          setAvailableSubtopics(subs);
+          setSelectedSubtopic('All');
+        }
+      });
+    } else {
+      setAvailableSubtopics([]);
+      setSelectedSubtopic('All');
+    }
+    return () => { isMounted = false; };
+  }, [selectedCategory, selectedTopic]);
 
 
   // Quiz active timer
@@ -192,6 +213,7 @@ export const PracticeFlow: React.FC = () => {
         body: JSON.stringify({
           category: selectedCategory,
           topic: selectedTopic !== 'All' ? selectedTopic : undefined,
+          subtopic: selectedSubtopic !== 'All' ? selectedSubtopic : undefined,
           difficulty: selectedDifficulty,
           count: selectedCount
         })
@@ -313,18 +335,37 @@ export const PracticeFlow: React.FC = () => {
 
         <Card>
           <div className="space-y-5">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Topic Select */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-700">Topic</label>
                 <select
                   value={selectedTopic}
-                  onChange={(e) => setSelectedTopic(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedTopic(e.target.value);
+                    setSelectedSubtopic('All');
+                  }}
                   className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-blue-600"
                 >
                   <option value="All">All Topics</option>
                   {availableTopics.map(t => (
                     <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Subtopic Select */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700">Subtopic</label>
+                <select
+                  value={selectedSubtopic}
+                  onChange={(e) => setSelectedSubtopic(e.target.value)}
+                  disabled={selectedTopic === 'All' || availableSubtopics.length === 0}
+                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-blue-600 disabled:bg-slate-50 disabled:text-slate-400"
+                >
+                  <option value="All">{selectedTopic === 'All' ? 'All Subtopics' : 'All Subtopics'}</option>
+                  {availableSubtopics.map(st => (
+                    <option key={st} value={st}>{st}</option>
                   ))}
                 </select>
               </div>

@@ -2,10 +2,18 @@ import request from 'supertest';
 import { app } from '../index';
 import { PagePublishingService } from '../services/PagePublishingService';
 import { AIService } from '../services/AIService';
+import { db } from '../config/firebase';
 
 describe('Page Publishing & Coming Soon Architecture Suite', () => {
   const adminToken = `header.${Buffer.from(JSON.stringify({ uid: 'admin_test_1', email: 'admin@crackplace.ai', role: 'admin' })).toString('base64')}.sig`;
   const studentToken = `header.${Buffer.from(JSON.stringify({ uid: 'student_test_1', email: 'student@crackplace.ai', role: 'student' })).toString('base64')}.sig`;
+
+  beforeAll(async () => {
+    await db.collection('systemSettings').doc('pagePublishing').set({
+      study_notes: { status: 'coming_soon', updatedAt: new Date().toISOString(), updatedBy: 'system' },
+      coding_workspace: { status: 'coming_soon', updatedAt: new Date().toISOString(), updatedBy: 'system' }
+    });
+  });
 
   beforeEach(() => {
     PagePublishingService.resetCacheForTesting();

@@ -1045,10 +1045,13 @@ app.get('/api/auth/xp/transactions', verifyToken, async (req: AuthenticatedReque
 
 app.post('/api/auth/battle-room/create', strictAuthLimiter, verifyToken, async (req: AuthenticatedRequest, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
-  const { battleType, questionsCount, difficulty, timeLimit, isPrivate } = req.body;
+  const { battleType, topic, subtopic, questionsCount, difficulty, timeLimit, isPrivate } = req.body;
 
   try {
-    const validBattleTypes = ['Aptitude', 'DSA', 'DBMS', 'Operating Systems', 'Mixed', 'Technical', 'Reasoning', 'HR', 'Rapid Fire'];
+    const validBattleTypes = [
+      'Aptitude', 'DSA', 'DBMS', 'Operating Systems', 'Mixed', 'Technical', 'Reasoning', 'HR', 'Rapid Fire',
+      'quantitative_aptitude', 'dsa', 'dbms', 'operating_system', 'computer_network', 'logical_reasoning', 'verbal_ability', 'hr_behavioral'
+    ];
     const sanitizedBattleType = validBattleTypes.includes(battleType) ? battleType : 'DSA';
 
     const validDifficulties = ['Easy', 'Medium', 'Hard', 'Mixed'];
@@ -1058,8 +1061,15 @@ app.post('/api/auth/battle-room/create', strictAuthLimiter, verifyToken, async (
     const limit = Math.min(120, Math.max(10, Number(timeLimit) || 30));
 
     const prefixes: { [key: string]: string } = {
-      'Aptitude': 'APT', 'DSA': 'DSA', 'DBMS': 'DBM', 'Operating Systems': 'OPS', 'Mixed': 'MIX',
-      'Technical': 'TEC', 'Reasoning': 'REA', 'HR': 'HRC', 'Rapid Fire': 'RAP'
+      'quantitative_aptitude': 'APT', 'Aptitude': 'APT',
+      'dsa': 'DSA', 'DSA': 'DSA',
+      'dbms': 'DBM', 'DBMS': 'DBM',
+      'operating_system': 'OPS', 'Operating Systems': 'OPS',
+      'computer_network': 'NET', 'Technical': 'TEC',
+      'logical_reasoning': 'REA', 'Reasoning': 'REA',
+      'verbal_ability': 'VER', 'English': 'VER',
+      'hr_behavioral': 'HRC', 'HR': 'HRC',
+      'Mixed': 'MIX', 'Rapid Fire': 'RAP'
     };
     const pfx = prefixes[sanitizedBattleType] || 'BAT';
 
@@ -1099,7 +1109,9 @@ app.post('/api/auth/battle-room/create', strictAuthLimiter, verifyToken, async (
         questionsCount: count,
         difficulty: sanitizedDifficulty,
         timeLimit: limit,
-        isPrivate: isPrivate === undefined ? true : !!isPrivate
+        isPrivate: isPrivate === undefined ? true : !!isPrivate,
+        topic: topic ? String(topic).trim() : null,
+        subtopic: subtopic ? String(subtopic).trim() : null
       },
       status: 'waiting',
       createdTime: now.toISOString(),

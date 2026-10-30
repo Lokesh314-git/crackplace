@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useAuthStore } from '../store/authStore';
 import { useSearchParams } from 'react-router-dom';
@@ -20,6 +20,7 @@ import {
 } from 'react-icons/fa6';
 import { getUserAvatarUrl } from '../utils/avatarResolver';
 import type { BattleResult } from '../types';
+import { SUBJECT_LIST, getTopicsForSubject, getSubtopicsForTopic } from '../constants/subjects';
 
 const CATEGORIES = ['Aptitude', 'DSA', 'DBMS', 'Operating Systems'];
 
@@ -103,13 +104,38 @@ export const Battle: React.FC = () => {
   }, [status, lobbyRoom, setSearchParams]);
   
   // Custom battle settings form states
-  const [customBattleType, setCustomBattleType] = useState('Aptitude');
+  const [selectedSubject, setSelectedSubject] = useState('quantitative_aptitude');
+  const [selectedTopic, setSelectedTopic] = useState('All');
+  const [selectedSubtopic, setSelectedSubtopic] = useState('All');
   const [questionsCount, setQuestionsCount] = useState(5);
   const [difficulty, setDifficulty] = useState('Medium');
   const [timeLimit, setTimeLimit] = useState(30);
-  const [categoryName, setCategoryName] = useState('All');
-  const [companyName, setCompanyName] = useState('All');
   const [isPrivate, setIsPrivate] = useState(true);
+
+  // Dynamic dropdown lists for custom challenges
+  const availableTopics = useMemo(() => {
+    return getTopicsForSubject(selectedSubject);
+  }, [selectedSubject]);
+
+  const availableSubtopics = useMemo(() => {
+    if (!selectedTopic || selectedTopic === 'All') return [];
+    return getSubtopicsForTopic(selectedSubject, selectedTopic);
+  }, [selectedSubject, selectedTopic]);
+
+  const handleSubjectChange = (newSubject: string) => {
+    setSelectedSubject(newSubject);
+    setSelectedTopic('All');
+    setSelectedSubtopic('All');
+  };
+
+  const handleTopicChange = (newTopic: string) => {
+    setSelectedTopic(newTopic);
+    setSelectedSubtopic('All');
+  };
+
+  const handleSubtopicChange = (newSubtopic: string) => {
+    setSelectedSubtopic(newSubtopic);
+  };
 
   // Combat details
   const [battleId, setBattleId] = useState<string | null>(null);
@@ -277,12 +303,12 @@ export const Battle: React.FC = () => {
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          battleType: customBattleType,
+          battleType: selectedSubject,
           questionsCount,
           difficulty,
           timeLimit,
-          category: categoryName,
-          company: companyName,
+          topic: selectedTopic !== 'All' ? selectedTopic : undefined,
+          subtopic: selectedSubtopic !== 'All' ? selectedSubtopic : undefined,
           isPrivate
         })
       });
@@ -330,7 +356,11 @@ export const Battle: React.FC = () => {
     if (!lobbyRoom) return;
     const appBaseUrl = (import.meta.env.VITE_APP_URL || window.location.origin).replace(/\/$/, '');
     const inviteLink = `${appBaseUrl}/battle?room=${lobbyRoom.roomId}`;
-    const text = `🔥 I challenge you to a 1v1 battle on CrackPlace AI!\n\nRoom Code: ${lobbyRoom.roomId}\nCategory: ${lobbyRoom.battleType}\nDifficulty: ${lobbyRoom.settings.difficulty}\nQuestions: ${lobbyRoom.settings.questionsCount}\n\nCan you beat me?\n\nJoin here:\n${inviteLink}`;
+    const subjectName = SUBJECT_LIST.find(s => s.slug === lobbyRoom.battleType)?.name || lobbyRoom.battleType;
+    const topicDetails = lobbyRoom.settings?.topic && lobbyRoom.settings.topic !== 'All'
+      ? `\nTopic: ${lobbyRoom.settings.topic}${lobbyRoom.settings?.subtopic && lobbyRoom.settings.subtopic !== 'All' ? ` (${lobbyRoom.settings.subtopic})` : ''}`
+      : '';
+    const text = `🔥 I challenge you to a 1v1 battle on CrackPlace AI!\n\nRoom Code: ${lobbyRoom.roomId}\nSubject: ${subjectName}${topicDetails}\nDifficulty: ${lobbyRoom.settings.difficulty}\nQuestions: ${lobbyRoom.settings.questionsCount}\n\nCan you beat me?\n\nJoin here:\n${inviteLink}`;
     
     if (navigator.share) {
       navigator.share({
@@ -407,6 +437,7 @@ export const Battle: React.FC = () => {
       isSubmittingRef.current = false;
       setSelectedOption(null);
       selectedOptionRef.current = null;
+      setLobbyLoading(false);
       setBattleAlert({ text: data.message || 'Battle notification', type: 'error' });
     };
 
@@ -988,20 +1019,62 @@ export const Battle: React.FC = () => {
                 {customSubTab === 'create' ? (
                   <div className="space-y-4">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {/* Battle Type */}
+                      {/* Subject */}
                       <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Topic Domain</label>
+                        <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Subject</label>
                         <select
-                          value={customBattleType}
-                          onChange={e => setCustomBattleType(e.target.value)}
+                          value={selectedSubject}
+                          onChange={e => handleSubjectChange(e.target.value)}
                           className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm focus:outline-hidden focus:border-blue-600"
                         >
-                          <option value="Aptitude">Quantitative Aptitude</option>
-                          <option value="DSA">Data Structures & Algorithms</option>
-                          <option value="DBMS">Database Management</option>
-                          <option value="Operating Systems">Operating Systems</option>
-                          <option value="HR">HR Interview Concepts</option>
-                          <option value="Rapid Fire">Rapid Fire Mixed</option>
+                          {SUBJECT_LIST.map(s => (
+                            <option key={s.slug} value={s.slug}>{s.name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Topic */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Topic</label>
+                        <select
+                          value={selectedTopic}
+                          onChange={e => handleTopicChange(e.target.value)}
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm focus:outline-hidden focus:border-blue-600"
+                        >
+                          <option value="All">All Topics (Mixed)</option>
+                          {availableTopics.map(t => (
+                            <option key={t} value={t}>{t}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Subtopic */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Subtopic</label>
+                        <select
+                          value={selectedSubtopic}
+                          onChange={e => handleSubtopicChange(e.target.value)}
+                          disabled={selectedTopic === 'All' || availableSubtopics.length === 0}
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm focus:outline-hidden focus:border-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <option value="All">{selectedTopic === 'All' ? 'Select a topic first' : 'All Subtopics (Mixed)'}</option>
+                          {availableSubtopics.map(st => (
+                            <option key={st} value={st}>{st}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Difficulty */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Difficulty Level</label>
+                        <select
+                          value={difficulty}
+                          onChange={e => setDifficulty(e.target.value)}
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm focus:outline-hidden focus:border-blue-600"
+                        >
+                          <option value="Easy">Easy (Foundation)</option>
+                          <option value="Medium">Medium (Campus Standard)</option>
+                          <option value="Hard">Hard (Product Level)</option>
                         </select>
                       </div>
 
@@ -1020,20 +1093,6 @@ export const Battle: React.FC = () => {
                         </select>
                       </div>
 
-                      {/* Difficulty */}
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Difficulty Level</label>
-                        <select
-                          value={difficulty}
-                          onChange={e => setDifficulty(e.target.value)}
-                          className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm focus:outline-hidden focus:border-blue-600"
-                        >
-                          <option value="Easy">Easy (Foundation)</option>
-                          <option value="Medium">Medium (Campus Standard)</option>
-                          <option value="Hard">Hard (Product Level)</option>
-                        </select>
-                      </div>
-
                       {/* Time limit */}
                       <div className="space-y-1.5">
                         <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Pace (Time per Question)</label>
@@ -1047,30 +1106,6 @@ export const Battle: React.FC = () => {
                           <option value="45">45 Seconds (Analytical)</option>
                           <option value="60">60 Seconds (Comprehensive)</option>
                         </select>
-                      </div>
-
-                      {/* Category */}
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Subtopic Filter</label>
-                        <input
-                          type="text"
-                          value={categoryName}
-                          onChange={e => setCategoryName(e.target.value)}
-                          placeholder="e.g. Dynamic Programming, Trees"
-                          className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm focus:outline-hidden focus:border-blue-600"
-                        />
-                      </div>
-
-                      {/* Company */}
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Company Pattern</label>
-                        <input
-                          type="text"
-                          value={companyName}
-                          onChange={e => setCompanyName(e.target.value)}
-                          placeholder="e.g. TCS, Amazon, Infosys"
-                          className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm focus:outline-hidden focus:border-blue-600"
-                        />
                       </div>
                     </div>
 
@@ -1177,7 +1212,20 @@ export const Battle: React.FC = () => {
             </button>
             <div>
               <h1 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white leading-tight">Waiting Room</h1>
-              <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400">Code: <span className="font-mono text-blue-600 dark:text-blue-400 font-semibold">{lobbyRoom.roomId}</span></p>
+              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400">Code: <span className="font-mono text-blue-600 dark:text-blue-400 font-semibold">{lobbyRoom.roomId}</span></p>
+                {lobbyRoom.battleType && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium">
+                    {SUBJECT_LIST.find(s => s.slug === lobbyRoom.battleType)?.name || lobbyRoom.battleType}
+                  </span>
+                )}
+                {lobbyRoom.settings?.topic && lobbyRoom.settings.topic !== 'All' && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-medium">
+                    {lobbyRoom.settings.topic}
+                    {lobbyRoom.settings?.subtopic && lobbyRoom.settings.subtopic !== 'All' ? ` • ${lobbyRoom.settings.subtopic}` : ''}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
           

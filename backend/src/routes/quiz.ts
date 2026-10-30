@@ -7,7 +7,7 @@ import { calculateLevelFromXP, LevelCalculator, syncMissionsState, processMissio
 import { checkAndFulfillReferral } from '../services/referralService';
 import { calculatePlacementReadiness } from '../utils/readiness';
 
-import { supabase } from '../config/supabase';
+import { supabase, isSupabaseConfigured } from '../config/supabase';
 
 const router = Router();
 
@@ -43,7 +43,7 @@ export async function enrichQuestionsWithExplanations(questions: any[]): Promise
   }
 
   const ids = missing.map(q => q.id).filter(Boolean);
-  if (ids.length > 0 && supabase) {
+  if (ids.length > 0 && isSupabaseConfigured) {
     try {
       // Escape or quote IDs cleanly for PostgREST
       const formattedIds = ids.map(id => String(id).replace(/[",]/g, '')).filter(Boolean);
@@ -146,13 +146,36 @@ export function formatReviewQuestions(questions: any[], userAnswers: Record<stri
   });
 }
 
+import { SUBJECT_LIST, getTopicsForSubject, getSubtopicsForTopic } from '../constants/subjects';
+
 const generateQuizSchema = z.object({
-  category: z.string(),
+  category: z.string().optional(),
+  subjectSlug: z.string().optional(),
   topic: z.string().optional(),
+  subtopic: z.string().optional(),
   difficulty: z.enum(['easy', 'medium', 'hard', 'mixed']).default('medium'),
-  count: z.number().min(5).max(50).default(10),
+  count: z.number().min(1).max(50).default(10),
   language: z.string().default('English'),
   company: z.string().optional()
+}).refine(data => Boolean(data.category || data.subjectSlug), {
+  message: "Either 'category' or 'subjectSlug' must be provided"
+});
+
+/**
+ * Public taxonomy endpoint for subjects, topics, and subtopics
+ */
+router.get('/taxonomy', (_req, res) => {
+  res.json({ subjects: SUBJECT_LIST });
+});
+
+router.get('/taxonomy/:slug/topics', (req, res) => {
+  const topics = getTopicsForSubject(req.params.slug);
+  res.json({ topics });
+});
+
+router.get('/taxonomy/:slug/topics/:topic/subtopics', (req, res) => {
+  const subtopics = getSubtopicsForTopic(req.params.slug, req.params.topic);
+  res.json({ subtopics });
 });
 
 /**
@@ -166,17 +189,20 @@ router.post('/generate', optionalAuth, async (req: AuthenticatedRequest, res) =>
     return res.status(400).json({ error: 'Invalid parameters', details: parseResult.error.format() });
   }
 
-  const { category, topic, difficulty, count, language, company } = parseResult.data;
+  const rawData = parseResult.data;
+  const category = rawData.category || rawData.subjectSlug!;
+  const { topic, subtopic, difficulty, count, language, company } = rawData;
 
   try {
-    console.log(`[QUIZ API] Loading practice quiz from Supabase Question Bank: ${category} (topic: ${topic || 'all'}, diff: ${difficulty}), count: ${count}`);
+    console.log(`[QUIZ API] Loading practice quiz: ${category} (topic: ${topic || 'all'}, subtopic: ${subtopic || 'all'}, diff: ${difficulty}), count: ${count}`);
 
-    // Retrieve authoritative questions from Supabase with flexible topic/difficulty matching
+    // Retrieve authoritative questions with strict topic/subtopic filtering
     const { questions, matchedTopicCount, requestedCount } = await QuestionService.getPracticeQuestions({
       category,
       count,
       preferredDifficulty: difficulty,
-      topic
+      topic,
+      subtopic
     });
 
     if (!questions || questions.length === 0) {
@@ -196,6 +222,8 @@ router.post('/generate', optionalAuth, async (req: AuthenticatedRequest, res) =>
       requestedCount,
       questions: shuffledQuestions.map((q) => ({
         id: q.id,
+        topic: q.topic,
+        subtopic: q.subtopic,
         questionText: q.question,
         options: q.options,
         correctOptionIndex: q.correctOption,
@@ -210,6 +238,8 @@ router.post('/generate', optionalAuth, async (req: AuthenticatedRequest, res) =>
     // Sanitize questions for client: do not leak answer key (correctOptionIndex) or explanations before submission
     const sanitizedQuestions = quizData.questions.map((q) => ({
       id: q.id,
+      topic: q.topic,
+      subtopic: q.subtopic,
       questionText: q.questionText,
       options: q.options
     }));
@@ -234,7 +264,11 @@ router.post('/generate', optionalAuth, async (req: AuthenticatedRequest, res) =>
     });
   } catch (error: any) {
     console.error('[QUIZ API] Question retrieval failed:', error);
-    res.status(500).json({ error: 'Unable to load quiz from Question Bank. Please try again.' });
+    const isClientError = error.message && (error.message.includes('No questions found') || error.message.includes('Not enough questions'));
+    res.status(isClientError ? 400 : 500).json({ 
+      error: error.message || 'Unable to load quiz from Question Bank. Please try again.',
+      code: isClientError ? 'INSUFFICIENT_QUESTIONS' : 'SERVER_ERROR'
+    });
   }
 });
 

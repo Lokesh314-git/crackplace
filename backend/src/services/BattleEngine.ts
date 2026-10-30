@@ -601,8 +601,17 @@ export class BattleEngine {
       const timeLimit = roomData.settings?.timeLimit || 30;
       const category = roomData.battleType || 'DSA';
       const difficulty = roomData.settings?.difficulty || 'Medium';
+      const topic = roomData.settings?.topic || undefined;
+      const subtopic = roomData.settings?.subtopic || undefined;
 
-      const questions = await QuestionService.selectBattleQuestions(category, questionsCount, difficulty);
+      let questions: Question[] = [];
+      try {
+        questions = await QuestionService.selectBattleQuestions(category, questionsCount, difficulty, topic, subtopic);
+      } catch (err: any) {
+        logger.error('Failed to select battle questions for custom room', { roomId, error: err.message });
+        socket.emit('battle_error', { message: err.message || 'Failed to select battle questions.' });
+        return;
+      }
       const sanitized = QuestionService.sanitizeForClient(questions);
 
       const now = Date.now();

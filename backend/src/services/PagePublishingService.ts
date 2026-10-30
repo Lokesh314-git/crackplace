@@ -1,4 +1,4 @@
-import { supabase } from '../config/supabase';
+import { supabase, isSupabaseConfigured } from '../config/supabase';
 import { db } from '../config/firebase';
 import logger from '../utils/logger';
 
@@ -38,7 +38,7 @@ export class PagePublishingService {
   public static async initialize(): Promise<void> {
     try {
       // 1. Try fetching from Supabase PostgreSQL
-      if (supabase) {
+      if (isSupabaseConfigured) {
         const { data, error } = await supabase
           .from('page_publishing_settings')
           .select('page_key, status, updated_at, updated_by');
@@ -133,7 +133,7 @@ export class PagePublishingService {
 
     // Refresh from database to ensure fresh state
     try {
-      if (supabase) {
+      if (isSupabaseConfigured) {
         const { data, error } = await supabase
           .from('page_publishing_settings')
           .select('page_key, status, updated_at, updated_by');
@@ -200,7 +200,7 @@ export class PagePublishingService {
     // 1. Update in Supabase PostgreSQL
     let supabaseSuccess = false;
     try {
-      if (supabase) {
+      if (isSupabaseConfigured) {
         const { error } = await supabase
           .from('page_publishing_settings')
           .upsert({

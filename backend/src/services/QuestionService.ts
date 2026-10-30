@@ -1,12 +1,33 @@
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import { Question, SanitizedQuestion } from '../types/question';
-import { supabase } from '../config/supabase';
+import { supabase, isSupabaseConfigured } from '../config/supabase';
 import { redisClient } from '../config/redis';
 import logger from '../utils/logger';
+import { isTopicMatch, isSubtopicMatch, normalizeSubjectSlug as normalizeSlugCanonical } from '../constants/subjects';
 
 export interface PlayerQuestionPackage {
   sanitizedQuestions: SanitizedQuestion[];
   optionMappings: { [qIndex: number]: number[] };
+}
+
+let cachedCuratedQuestions: Question[] | null = null;
+function getCuratedBank(): Question[] {
+  if (cachedCuratedQuestions && cachedCuratedQuestions.length > 0) {
+    return cachedCuratedQuestions;
+  }
+  try {
+    const dataPath = path.join(__dirname, '../data/curatedQuestions.json');
+    if (fs.existsSync(dataPath)) {
+      const raw = fs.readFileSync(dataPath, 'utf8');
+      cachedCuratedQuestions = JSON.parse(raw);
+      return cachedCuratedQuestions || [];
+    }
+  } catch (err: any) {
+    logger.warn('[QuestionService] Could not read curatedQuestions.json', { error: err.message });
+  }
+  return [];
 }
 
 export class QuestionService {
@@ -244,123 +265,199 @@ export class QuestionService {
 
   /**
    * Practice Questions Retrieval Engine
-   * Retrieves authoritative questions from Supabase for all 8 placement subjects with flexible topic and difficulty filters.
+   * Retrieves authoritative questions strictly matching subject, topic, and subtopic filters.
+   * NEVER mixes questions from unrelated topics or broader subjects when a topic is selected.
    */
   public static async getPracticeQuestions(params: {
     category: string;
     count?: number;
     preferredDifficulty?: string;
     topic?: string;
+    subtopic?: string;
   }): Promise<{ questions: Question[]; matchedTopicCount: number; requestedCount: number }> {
     const count = Math.max(1, params.count || 10);
     const subjectSlug = this.normalizeSubjectSlug(params.category);
     const diffUpper = (params.preferredDifficulty || 'medium').charAt(0).toUpperCase() + (params.preferredDifficulty || 'medium').slice(1).toLowerCase();
     const isMixed = !params.preferredDifficulty || params.preferredDifficulty.toLowerCase() === 'mixed' || params.preferredDifficulty.toLowerCase() === 'all';
     const topicRaw = params.topic && params.topic.trim() !== '' && params.topic !== 'All' ? params.topic.trim() : null;
+    const subtopicRaw = params.subtopic && params.subtopic.trim() !== '' && params.subtopic !== 'All' ? params.subtopic.trim() : null;
 
     const uniqueMap = new Map<string, Question>();
     let matchedTopicCount = 0;
 
     try {
-      // 1. If a specific topic is requested, query with topic matching
+      // 1. STRICT TOPIC FILTERING
       if (topicRaw) {
-        // Attempt exact and ilike match (handling & vs and)
-        const topicNormAlt = topicRaw.includes('&') 
-          ? topicRaw.replace(/&/g, 'and') 
-          : topicRaw.includes(' and ') 
-          ? topicRaw.replace(/\sand\s/gi, ' & ') 
-          : topicRaw;
+        // A. Attempt Supabase query with timeout safety if configured
+        if (isSupabaseConfigured) {
+          try {
+            let topicQuery = supabase
+              .from('questions')
+              .select('*')
+              .eq('subject', subjectSlug);
 
-        let topicQuery = supabase
-          .from('questions')
-          .select('*')
-          .eq('subject', subjectSlug);
+            if (!isMixed && ['Easy', 'Medium', 'Hard'].includes(diffUpper)) {
+              topicQuery = topicQuery.ilike('difficulty', diffUpper);
+            }
 
-        // Filter difficulty if specified
-        if (!isMixed && ['Easy', 'Medium', 'Hard'].includes(diffUpper)) {
-          topicQuery = topicQuery.ilike('difficulty', diffUpper);
+            // Search using exact and variant patterns
+            topicQuery = topicQuery.or(
+              `topic.ilike.%${topicRaw}%,topic.ilike.%${topicRaw.replace(/&/g, 'and')}%,topic.ilike.%${topicRaw.replace(/\sand\s/gi, ' & ')}%`
+            );
+
+            const { data: topicData, error: topicError } = await topicQuery.limit(count * 5);
+
+            if (!topicError && Array.isArray(topicData) && topicData.length > 0) {
+              for (const row of topicData) {
+                const q = this.mapDbRowToQuestion(row);
+                // Strict verification against topic and subtopic
+                if (isTopicMatch(q.topic, topicRaw)) {
+                  if (!subtopicRaw || isSubtopicMatch(q.subtopic, subtopicRaw)) {
+                    if (!uniqueMap.has(q.id)) {
+                      uniqueMap.set(q.id, q);
+                    }
+                  }
+                }
+              }
+            }
+          } catch (sbErr: any) {
+            logger.warn('[QuestionService] Supabase query failed or timed out', { error: sbErr.message });
+          }
         }
 
-        // Try ILIKE with exact or variant
-        topicQuery = topicQuery.or(`topic.ilike.%${topicRaw}%,topic.ilike.%${topicNormAlt}%`);
+        // B. Curated local bank questions strictly matching topic and subtopic
+        const localBank = getCuratedBank();
+        const localMatching = localBank.filter(q => {
+          if (this.normalizeSubjectSlug(q.category) !== subjectSlug) return false;
+          if (!isTopicMatch(q.topic, topicRaw)) return false;
+          if (subtopicRaw && !isSubtopicMatch(q.subtopic, subtopicRaw)) return false;
+          return true;
+        });
 
-        const { data: topicData, error: topicError } = await topicQuery.limit(count * 3);
-
-        if (!topicError && Array.isArray(topicData) && topicData.length > 0) {
-          const shuffledTopic = [...topicData].sort(() => 0.5 - Math.random());
-          for (const row of shuffledTopic) {
-            const q = this.mapDbRowToQuestion(row);
-            if (!uniqueMap.has(q.id)) {
+        // Add matching local questions (prioritizing preferred difficulty)
+        for (const q of localMatching) {
+          if (!uniqueMap.has(q.id)) {
+            if (isMixed || q.difficulty.toLowerCase() === diffUpper.toLowerCase() || uniqueMap.size < count) {
               uniqueMap.set(q.id, q);
             }
-            if (uniqueMap.size >= count) break;
           }
-          matchedTopicCount = uniqueMap.size;
+        }
+
+        matchedTopicCount = uniqueMap.size;
+
+        // C. Check availability - NEVER SILENTLY FILL WITH UNRELATED QUESTIONS!
+        const filterDescriptor = subtopicRaw ? `topic "${topicRaw}" (subtopic: "${subtopicRaw}")` : `topic "${topicRaw}"`;
+        if (uniqueMap.size === 0) {
+          throw new Error(`No questions found matching your selected ${filterDescriptor}. Please choose another topic or difficulty.`);
+        }
+
+        if (uniqueMap.size < count) {
+          throw new Error(`Not enough questions available for ${filterDescriptor}. Only ${uniqueMap.size} question(s) found in the question bank, but ${count} were requested. Please select a lower question count or try another topic.`);
+        }
+
+        // D. Random selection strictly from matching topic pool
+        const matchingPool = Array.from(uniqueMap.values());
+        for (let i = matchingPool.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [matchingPool[i], matchingPool[j]] = [matchingPool[j], matchingPool[i]];
+        }
+
+        return {
+          questions: matchingPool.slice(0, count),
+          matchedTopicCount,
+          requestedCount: count
+        };
+      }
+
+      // 2. NO TOPIC FILTER ('All Topics') - Select across subject
+      if (isSupabaseConfigured) {
+        try {
+          let generalQuery = supabase
+            .from('questions')
+            .select('*')
+            .eq('subject', subjectSlug);
+
+          if (!isMixed && ['Easy', 'Medium', 'Hard'].includes(diffUpper)) {
+            generalQuery = generalQuery.ilike('difficulty', diffUpper);
+          }
+
+          const { data: generalData, error: generalError } = await generalQuery.limit(count * 4);
+
+          if (!generalError && Array.isArray(generalData) && generalData.length > 0) {
+            for (const row of generalData) {
+              const q = this.mapDbRowToQuestion(row);
+              if (!uniqueMap.has(q.id)) {
+                uniqueMap.set(q.id, q);
+              }
+            }
+          }
+        } catch (sbErr: any) {
+          logger.warn('[QuestionService] Supabase general query failed or timed out', { error: sbErr.message });
         }
       }
 
-      // 2. If no topic filter OR topic filter returned fewer than requested count, fetch from broader subject
+      // Complement from local bank if needed
       if (uniqueMap.size < count) {
-        let generalQuery = supabase
-          .from('questions')
-          .select('*')
-          .eq('subject', subjectSlug);
-
-        if (!isMixed && ['Easy', 'Medium', 'Hard'].includes(diffUpper) && uniqueMap.size === 0) {
-          generalQuery = generalQuery.ilike('difficulty', diffUpper);
+        const localBank = getCuratedBank();
+        const localSubjectQs = localBank.filter(q => this.normalizeSubjectSlug(q.category) === subjectSlug);
+        for (const q of localSubjectQs) {
+          if (!uniqueMap.has(q.id)) {
+            uniqueMap.set(q.id, q);
+          }
         }
+      }
 
-        const { data: generalData, error: generalError } = await generalQuery.limit(count * 4);
-
-        if (!generalError && Array.isArray(generalData) && generalData.length > 0) {
-          const shuffledGen = [...generalData].sort(() => 0.5 - Math.random());
-          for (const row of shuffledGen) {
-            const q = this.mapDbRowToQuestion(row);
-            if (!uniqueMap.has(q.id)) {
-              uniqueMap.set(q.id, q);
-            }
-            if (uniqueMap.size >= count) break;
+      // Offline emergency fallback
+      if (uniqueMap.size === 0) {
+        const fallbacks = this.getCuratedFallbackQuestions(subjectSlug);
+        for (const q of fallbacks) {
+          if (!uniqueMap.has(q.id)) {
+            uniqueMap.set(q.id, q);
           }
         }
       }
     } catch (err: any) {
-      logger.error('[QuestionService] Practice query error', { error: err.message, subjectSlug });
-    }
-
-    // 3. Guaranteed Emergency Fallback if Supabase was unreachable
-    if (uniqueMap.size === 0) {
-      const fallbacks = this.getCuratedFallbackQuestions(subjectSlug);
-      for (const q of fallbacks) {
-        if (!uniqueMap.has(q.id)) {
-          uniqueMap.set(q.id, q);
-        }
-        if (uniqueMap.size >= count) break;
+      if (err.message && (err.message.includes('No questions found') || err.message.includes('Not enough questions'))) {
+        throw err;
       }
+      logger.error('[QuestionService] Practice query error', { error: err.message, subjectSlug });
+      throw err;
     }
 
-    const questions = Array.from(uniqueMap.values());
+    if (uniqueMap.size === 0) {
+      throw new Error(`No questions found for subject "${params.category}". Please try another subject.`);
+    }
+
+    const pool = Array.from(uniqueMap.values());
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+
     return {
-      questions,
-      matchedTopicCount: matchedTopicCount || questions.length,
+      questions: pool.slice(0, count),
+      matchedTopicCount: uniqueMap.size,
       requestedCount: count
     };
   }
 
   /**
-   * Select questions from Supabase PostgreSQL (Single Source of Truth)
+   * Select questions from Supabase PostgreSQL (Single Source of Truth) or Curated Bank
    * Guaranteed identical authoritative question set selection for match sessions.
    */
   public static async selectBattleQuestions(
     category: string,
     count: number = 5,
     preferredDifficulty: string = 'Medium',
-    topic?: string
+    topic?: string,
+    subtopic?: string
   ): Promise<Question[]> {
     const practiceResult = await this.getPracticeQuestions({
       category,
       count,
       preferredDifficulty,
-      topic
+      topic,
+      subtopic
     });
     return practiceResult.questions.slice(0, count);
   }
