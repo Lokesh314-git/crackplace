@@ -4,13 +4,13 @@ import { Question } from '../types';
 const supabaseUrl =
   import.meta.env.VITE_SUPABASE_URL ||
   import.meta.env.NEXT_PUBLIC_SUPABASE_URL ||
-  '';
+  'https://aawftejiuvqjbqouffij.supabase.co';
 
 const supabaseAnonKey =
   import.meta.env.VITE_SUPABASE_ANON_KEY ||
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
   import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-  '';
+  'sb_publishable_BYAvIZkEinqOYqnxUUhiGg_KRpqmxhK';
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl &&

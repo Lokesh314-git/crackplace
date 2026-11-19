@@ -5,16 +5,15 @@ dotenv.config();
 const rawUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const rawKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_KEY;
 
-export const isSupabaseConfigured = Boolean(
-  rawUrl &&
-  rawKey &&
-  !rawUrl.includes('your-project') &&
-  !rawUrl.includes('aawftejiuvqjbqouffij') &&
-  process.env.NODE_ENV !== 'test'
-);
-
 const supabaseUrl = rawUrl || 'https://aawftejiuvqjbqouffij.supabase.co';
 const supabaseKey = rawKey || 'sb_publishable_BYAvIZkEinqOYqnxUUhiGg_KRpqmxhK';
+
+export const isSupabaseConfigured = Boolean(
+  supabaseUrl &&
+  supabaseKey &&
+  !supabaseUrl.includes('your-project') &&
+  process.env.NODE_ENV !== 'test'
+);
 
 export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseKey, {
   auth: {

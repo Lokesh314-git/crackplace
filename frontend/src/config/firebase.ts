@@ -1,8 +1,11 @@
 import { initializeApp } from 'firebase/app';
+import { getAnalytics, isSupported } from 'firebase/analytics';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyB1P2VBP82rZ3y3pJqzeQsGE_Hl9sVbdfc',
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'crackprep-webapp.firebaseapp.com',
@@ -13,7 +16,20 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || 'G-27NGQ7R3LH'
 };
 
+// Initialize Firebase
 const app = initializeApp(firebaseConfig);
+
+// Initialize Analytics conditionally (supported only in client browser environments)
+export let analytics: ReturnType<typeof getAnalytics> | null = null;
+if (typeof window !== 'undefined') {
+  isSupported().then((supported) => {
+    if (supported) {
+      analytics = getAnalytics(app);
+    }
+  }).catch(() => {
+    // Non-browser or tracking-blocked environment
+  });
+}
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
