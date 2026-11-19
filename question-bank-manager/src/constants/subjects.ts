@@ -114,6 +114,39 @@ export const SUBJECT_MAP = new Map<string, SubjectMetadata>(
   DEFAULT_SUBJECTS.map((s) => [s.slug, s])
 );
 
+export function normalizeSubjectSlug(input?: string | null): string {
+  if (!input) return 'quantitative_aptitude';
+  const raw = input.toLowerCase().trim().replace(/[-\s]+/g, '_');
+
+  if (raw === 'aptitude' || raw.includes('quant') || raw === 'quantitative_aptitude') {
+    return 'quantitative_aptitude';
+  }
+  if (raw === 'dsa' || raw.includes('data_structure') || raw.includes('algorithm') || raw.includes('programming')) {
+    return 'dsa';
+  }
+  if (raw === 'dbms' || raw.includes('database') || raw.includes('sql')) {
+    return 'dbms';
+  }
+  if (raw === 'os' || raw.includes('operating_system') || raw === 'operating_systems') {
+    return 'operating_system';
+  }
+  if (raw === 'cn' || raw.includes('network') || raw.includes('computer_network') || raw === 'computer_networks') {
+    return 'computer_network';
+  }
+  if (raw === 'reasoning' || raw.includes('logical') || raw.includes('puzzle') || raw === 'logical_reasoning') {
+    return 'logical_reasoning';
+  }
+  if (raw === 'english' || raw.includes('verbal') || raw === 'verbal_ability') {
+    return 'verbal_ability';
+  }
+  if (raw === 'hr' || raw.includes('behavioral') || raw.includes('interview') || raw === 'hr_behavioral') {
+    return 'hr_behavioral';
+  }
+
+  if (SUBJECT_MAP.has(raw)) return raw;
+  return 'quantitative_aptitude';
+}
+
 export function getSubjectDetails(slug: string): SubjectMetadata {
   const found = SUBJECT_MAP.get(slug);
   if (found) return found;

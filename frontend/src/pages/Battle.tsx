@@ -22,7 +22,16 @@ import { getUserAvatarUrl } from '../utils/avatarResolver';
 import type { BattleResult } from '../types';
 import { SUBJECT_LIST, getTopicsForSubject, getSubtopicsForTopic } from '../constants/subjects';
 
-const CATEGORIES = ['Aptitude', 'DSA', 'DBMS', 'Operating Systems'];
+const CATEGORIES = [
+  'Aptitude',
+  'DSA',
+  'DBMS',
+  'Operating Systems',
+  'Computer Networks',
+  'Logical Reasoning',
+  'Verbal Ability',
+  'HR & Behavioral'
+];
 
 interface QuizQuestion {
   id?: string;
@@ -487,8 +496,8 @@ export const Battle: React.FC = () => {
             earned: myPlayerData?.coinsEarned ?? myPlayerData?.coins ?? 0
           },
           elo: {
-            current: myPlayerData?.eloAfter ?? myPlayerData?.elo ?? userProfile?.battleRating ?? 1200,
-            change: myPlayerData?.eloChange ?? (myPlayerData?.eloAfter !== undefined && myPlayerData?.eloBefore !== undefined ? myPlayerData.eloAfter - myPlayerData.eloBefore : (outcome === 'WIN' ? 25 : outcome === 'LOSS' ? -20 : 0))
+            current: myPlayerData?.eloAfter ?? myPlayerData?.elo ?? userProfile?.battleRating ?? 1000,
+            change: myPlayerData?.eloChange ?? (myPlayerData?.eloAfter !== undefined && myPlayerData?.eloBefore !== undefined ? myPlayerData.eloAfter - myPlayerData.eloBefore : 0)
           }
         };
 
@@ -927,7 +936,7 @@ export const Battle: React.FC = () => {
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Choose a category to automatically find an opponent of matching skill level.</p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
                   {CATEGORIES.map(cat => {
                     const isSelected = selectedCategory === cat;
                     return (
@@ -1295,7 +1304,7 @@ export const Battle: React.FC = () => {
               </div>
               <div className="w-full">
                 <h3 className="font-semibold text-xs text-slate-900 dark:text-white truncate">{host?.displayName}</h3>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Rating: {host?.battleRating || 1200}</p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Rating: {host?.battleRating || 1000}</p>
                 <div className="flex items-center justify-center gap-2 mt-1">
                   <span className="inline-block text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-medium">
                     Ready
@@ -1458,7 +1467,7 @@ export const Battle: React.FC = () => {
 
         <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-400 w-full shadow-xs">
           <span>Target Elo Range: </span>
-          <span className="font-semibold text-slate-900 dark:text-white">{(userProfile?.battleRating || 1200) - 100} — {(userProfile?.battleRating || 1200) + 100}</span>
+          <span className="font-semibold text-slate-900 dark:text-white">{(userProfile?.battleRating || 1000) - 100} — {(userProfile?.battleRating || 1000) + 100}</span>
         </div>
 
         <button
@@ -1597,6 +1606,7 @@ export const Battle: React.FC = () => {
         <button
           onClick={() => {
             setStatus('lounge');
+            setSearchParams({});
             setBattleId(null);
             setOpponent(null);
             setQuestions([]);

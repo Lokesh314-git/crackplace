@@ -14,6 +14,7 @@ import {
 } from '../game';
 import { resolveUserAvatar } from '../utils/avatarResolver';
 import logger from '../utils/logger';
+import { SUBJECT_LIST } from '../constants/subjects';
 
 export type BattleStatus = 
   | 'WAITING' 
@@ -83,7 +84,8 @@ export class BattleEngine {
   }
 
   private static getMatchmakingQueueKey(category: string): string {
-    return `matchmaking:queue:${category.toLowerCase()}`;
+    const slug = QuestionService.normalizeSubjectSlug(category);
+    return `matchmaking:queue:${slug}`;
   }
 
   /**
@@ -135,13 +137,13 @@ export class BattleEngine {
       return;
     }
 
-    const category = payload.battleType || 'DSA';
+    const category = QuestionService.normalizeSubjectSlug(payload.battleType || 'dsa');
     const queueKey = this.getMatchmakingQueueKey(category);
 
     const playerTicket = {
       userId,
       socketId: socket.id,
-      rating: payload.rating || 1200,
+      rating: payload.rating || GAME_CONFIG.elo.startingRating || 1000,
       profile: payload.profile || {},
       joinedAt: Date.now()
     };
@@ -185,7 +187,17 @@ export class BattleEngine {
     const userId = socket.data.userId;
     if (!userId) return;
 
-    const categories = ['Aptitude', 'DSA', 'DBMS', 'Operating Systems', 'Technical', 'Reasoning'];
+    const categories = Array.from(new Set([
+      ...SUBJECT_LIST.map(s => s.slug),
+      'quantitative_aptitude',
+      'dsa',
+      'dbms',
+      'operating_system',
+      'computer_network',
+      'logical_reasoning',
+      'verbal_ability',
+      'hr_behavioral'
+    ]));
     for (const cat of categories) {
       const queueKey = this.getMatchmakingQueueKey(cat);
       try {
@@ -509,7 +521,7 @@ export class BattleEngine {
           displayName: userData.displayName || 'Candidate',
           photoURL: userData.photoURL || '',
           level: userData.level || 1,
-          battleRating: userData.battleRating || 1200,
+          battleRating: userData.battleRating || GAME_CONFIG.elo.startingRating || 1000,
           ready: false,
           online: true,
           score: 0,

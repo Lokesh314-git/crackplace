@@ -319,7 +319,9 @@ export const Personalization: React.FC = () => {
       }
 
       const data = await res.json();
-      // Relying on onSnapshot for state sync
+      if (data.profile) {
+        useAuthStore.setState({ userProfile: data.profile });
+      }
 
       if (silent) {
         console.log('[AUTO-SAVE] Profile auto-saved successfully.');
@@ -497,8 +499,10 @@ export const Personalization: React.FC = () => {
         const err = await res.json();
         throw new Error(err.error || 'Failed to equip cosmetic.');
       }
-      // Relying on onSnapshot for state sync
-      // Relying on onSnapshot for state sync
+      const data = await res.json();
+      if (data.profile) {
+        useAuthStore.setState({ userProfile: data.profile });
+      }
       setSuccessMessage(`${item.name} equipped.`);
     } catch (err: any) {
       console.error(err);
@@ -542,8 +546,10 @@ export const Personalization: React.FC = () => {
         const err = await res.json();
         throw new Error(err.error || 'Failed to unequip cosmetic.');
       }
-      await res.json();
-      // Relying on onSnapshot for state sync
+      const data = await res.json();
+      if (data.profile) {
+        useAuthStore.setState({ userProfile: data.profile });
+      }
       setSuccessMessage(`${item.name} unequipped.`);
     } catch (err: any) {
       console.error(err);

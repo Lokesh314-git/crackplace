@@ -32,7 +32,7 @@ export async function checkAndFulfillReferral(userId: string) {
       // Update Referrer's inventory
       transaction.update(userRef, {
         coins: FieldValue.increment(COINS_REWARD),
-        unlockedAvatars: FieldValue.arrayUnion(LEGENDARY_COSMETIC_ID)
+        unlockedTitles: FieldValue.arrayUnion(LEGENDARY_COSMETIC_ID)
       });
 
       // Update Referral status

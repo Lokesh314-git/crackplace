@@ -1,5 +1,5 @@
 import { QuestionInsert, QuestionDifficulty, QuestionType } from '../types';
-import { DEFAULT_SUBJECTS } from '../constants/subjects';
+import { DEFAULT_SUBJECTS, normalizeSubjectSlug } from '../constants/subjects';
 
 /**
  * Normalizes text by trimming, collapsing multiple consecutive whitespaces, and normalizing punctuation
@@ -47,7 +47,7 @@ export function generateQuestionId(subjectSlug: string, nextIndex: number): stri
  * Normalizes a raw question object or CSV row into a sanitized QuestionInsert payload
  */
 export function normalizeQuestionInput(raw: any, subjectPrefixIndex: number = 1): QuestionInsert {
-  const subject = normalizeText(raw.subject || 'quantitative_aptitude').toLowerCase().replace(/\s+/g, '_');
+  const subject = normalizeSubjectSlug(normalizeText(raw.subject || 'quantitative_aptitude'));
   
   let difficulty: QuestionDifficulty = 'Medium';
   const rawDiff = normalizeText(raw.difficulty).toLowerCase();

@@ -4,6 +4,7 @@ import { FaXmark, FaBuilding, FaGraduationCap, FaFire, FaTrophy, FaStar, FaCrown
 import { useAuthStore } from '../../store/authStore';
 import { getUserAvatarUrl, getAvatarImageUrl, SYSTEM_DEFAULT_AVATAR_VISUAL } from '../../utils/avatarResolver';
 import { calculateLevelFromXP } from '../../utils/levelCalculator';
+import { calculatePlacementReadiness } from '../../utils/readiness';
 
 export interface ProfilePreviewData {
   uid: string;
@@ -74,11 +75,15 @@ export const ProfilePreviewModal: React.FC<ProfilePreviewModalProps> = ({
   };
 
   const getReadinessStatus = (score: number) => {
-    if (score >= 90) return { text: 'Placement Ready', color: 'text-brand-400', bar: 'bg-brand-500' };
-    if (score >= 75) return { text: 'Strong', color: 'text-emerald-400', bar: 'bg-emerald-500' };
-    if (score >= 60) return { text: 'Improving', color: 'text-blue-400', bar: 'bg-blue-500' };
-    if (score >= 40) return { text: 'Developing', color: 'text-amber-400', bar: 'bg-amber-500' };
-    return { text: 'Getting Started', color: 'text-slate-400', bar: 'bg-slate-500' };
+    const res = calculatePlacementReadiness({ placementReadinessScore: score });
+    let color = 'text-slate-400';
+    let bar = 'bg-slate-500';
+    if (res.score >= 90) { color = 'text-brand-400'; bar = 'bg-brand-500'; }
+    else if (res.score >= 75) { color = 'text-emerald-400'; bar = 'bg-emerald-500'; }
+    else if (res.score >= 60) { color = 'text-blue-400'; bar = 'bg-blue-500'; }
+    else if (res.score >= 45) { color = 'text-indigo-400'; bar = 'bg-indigo-500'; }
+    else if (res.score >= 25) { color = 'text-amber-400'; bar = 'bg-amber-500'; }
+    return { text: res.statusLabel, color, bar };
   };
 
   const handleAvatarError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
@@ -185,7 +190,7 @@ export const ProfilePreviewModal: React.FC<ProfilePreviewModalProps> = ({
                           Rating
                         </span>
                         <div className="text-lg font-bold text-brand-400 font-mono flex items-center gap-1">
-                          <FaStar className="w-4 h-4" /> {profile.battleRating || 1200}
+                          <FaStar className="w-4 h-4" /> {profile.battleRating || 1000}
                         </div>
                       </div>
                       <div className="bg-surface-elevated/40 border border-border-dark p-3 rounded-2xl flex flex-col items-center justify-center text-center">

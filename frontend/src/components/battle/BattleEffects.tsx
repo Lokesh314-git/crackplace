@@ -24,7 +24,7 @@ export const EntranceEffect: React.FC<{ type: string | null; onComplete: () => v
             transition={{ duration: 3, times: [0, 0.1, 0.2, 0.5, 1] }}
             className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none bg-blue-900/40"
           >
-            <div className="text-blue-400 font-bold text-6xl tracking-widest uppercase animate-pulse drop-shadow-[0_0_20px_rgba(59,130,246,0.8)]">
+            <div className="text-blue-400 font-bold text-2xl sm:text-4xl md:text-6xl tracking-widest uppercase animate-pulse drop-shadow-[0_0_20px_rgba(59,130,246,0.8)] text-center px-4">
               ⚡ CHALLENGER APPROACHES ⚡
             </div>
           </motion.div>
@@ -38,7 +38,7 @@ export const EntranceEffect: React.FC<{ type: string | null; onComplete: () => v
             transition={{ duration: 3, times: [0, 0.2, 0.4, 0.6, 1] }}
             className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none bg-emerald-900/40"
           >
-            <div className="text-emerald-400 font-mono font-bold text-6xl uppercase drop-shadow-[0_0_20px_rgba(16,185,129,0.8)]">
+            <div className="text-emerald-400 font-mono font-bold text-2xl sm:text-4xl md:text-6xl uppercase drop-shadow-[0_0_20px_rgba(16,185,129,0.8)] text-center px-4">
               // SYSTEM_BREACH //
             </div>
           </motion.div>
@@ -52,7 +52,7 @@ export const EntranceEffect: React.FC<{ type: string | null; onComplete: () => v
             transition={{ duration: 3, ease: "easeOut" }}
             className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none bg-purple-900/40"
           >
-            <div className="text-purple-400 font-bold text-6xl uppercase tracking-widest drop-shadow-[0_0_20px_rgba(168,85,247,0.8)]">
+            <div className="text-purple-400 font-bold text-2xl sm:text-4xl md:text-6xl uppercase tracking-widest drop-shadow-[0_0_20px_rgba(168,85,247,0.8)] text-center px-4">
               ✧ COSMIC ARRIVAL ✧
             </div>
           </motion.div>
@@ -83,10 +83,10 @@ export const VictoryEffect: React.FC<{ type: string | null; winnerName: string }
             transition={{ duration: 1 }}
             className="absolute inset-0 z-40 flex flex-col items-center justify-center pointer-events-none bg-gradient-to-b from-amber-500/30 to-transparent"
           >
-            <div className="text-amber-400 font-bold text-7xl uppercase tracking-widest drop-shadow-[0_0_30px_rgba(251,191,36,1)] mb-4">
+            <div className="text-amber-400 font-bold text-3xl sm:text-5xl md:text-7xl uppercase tracking-widest drop-shadow-[0_0_30px_rgba(251,191,36,1)] mb-4 text-center px-4">
               VICTORY
             </div>
-            <div className="text-white text-2xl font-semibold drop-shadow-md">
+            <div className="text-white text-lg sm:text-2xl font-semibold drop-shadow-md text-center px-4">
               {winnerName} rules the arena
             </div>
           </motion.div>
@@ -100,10 +100,10 @@ export const VictoryEffect: React.FC<{ type: string | null; winnerName: string }
             transition={{ duration: 1 }}
             className="absolute inset-0 z-40 flex flex-col items-center justify-center pointer-events-none bg-cyan-900/30 backdrop-blur-sm"
           >
-            <div className="text-cyan-400 font-mono font-bold text-6xl uppercase tracking-widest drop-shadow-[0_0_30px_rgba(34,211,238,1)] mb-4">
+            <div className="text-cyan-400 font-mono font-bold text-2xl sm:text-4xl md:text-6xl uppercase tracking-widest drop-shadow-[0_0_30px_rgba(34,211,238,1)] mb-4 text-center px-4">
               ASSESSMENT PASSED
             </div>
-            <div className="text-cyan-200 text-xl font-mono">
+            <div className="text-cyan-200 text-sm sm:text-xl font-mono text-center px-4">
               [ {winnerName.toUpperCase()} :: DOMINANCE VERIFIED ]
             </div>
           </motion.div>

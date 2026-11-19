@@ -11,6 +11,7 @@ import { redisClient, pubClient, subClient, isRedisAvailable } from './config/re
 import { BattleEngine } from './services/BattleEngine';
 import { QuestionService } from './services/QuestionService';
 import { AIService } from './services/AIService';
+import { GAME_CONFIG } from './game/config/gameConfig';
 import { 
   getXpRequiredForLevel, 
   calculateLevelFromXp, 
@@ -430,7 +431,7 @@ app.get('/api/leaderboard', verifyToken, async (req: AuthenticatedRequest, res) 
 
       const rawXp = Number(data.xp ?? data.totalXp ?? 0);
       const computedLevel = calculateLevelFromXP(rawXp);
-      const battleRating = Number(data.battleRating ?? data.eloRating ?? 1200);
+      const battleRating = Number(data.battleRating ?? data.eloRating ?? GAME_CONFIG.elo.startingRating ?? 1000);
 
       const resolvedAvatar = resolveUserAvatar(data);
 
@@ -546,7 +547,7 @@ app.get('/api/profile/:uid/public', verifyToken, async (req: AuthenticatedReques
     }
     const rawXp = Number(data.xp || 0);
     const computedLevel = calculateLevelFromXP(rawXp);
-    const battleRating = Number(data.battleRating ?? data.eloRating ?? 1200);
+    const battleRating = Number(data.battleRating ?? data.eloRating ?? GAME_CONFIG.elo.startingRating ?? 1000);
     const resolvedAvatar = resolveUserAvatar(data);
 
     const publicProfile = {
@@ -683,6 +684,10 @@ app.post('/api/auth/store/buy', strictAuthLimiter, verifyToken, async (req: Auth
       else if (item.category === 'theme') fieldName = 'unlockedThemes';
       else if (item.category === 'emote') fieldName = 'unlockedEmotes';
       else if (item.category === 'sticker') fieldName = 'unlockedStickers';
+      else if (item.category === 'entrance') fieldName = 'unlockedEntrances';
+      else if (item.category === 'victory') fieldName = 'unlockedVictories';
+
+      if (!fieldName) throw new Error('Invalid item category');
 
       const unlockedList = userData[fieldName] || [];
       if (unlockedList.includes(item.id)) {
@@ -781,6 +786,49 @@ app.post('/api/auth/profile/equip', verifyToken, async (req: AuthenticatedReques
     res.json({ message: isUnequip ? 'Cosmetic unequipped.' : 'Cosmetic equipped!', profile: freshUserDoc.data() });
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'Equip failed.' });
+  }
+});
+
+app.post('/api/auth/profile/favorite', strictAuthLimiter, verifyToken, async (req: AuthenticatedRequest, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  const { itemId } = req.body;
+  if (!itemId) return res.status(400).json({ error: 'itemId is required' });
+
+  const item = COSMETICS_CATALOG.find(i => i.id === itemId);
+  if (!item) return res.status(404).json({ error: 'Item not found in catalog' });
+
+  const userDocRef = db.collection('users').doc(req.user.uid);
+  try {
+    let isAdded = false;
+    await db.runTransaction(async (transaction: any) => {
+      const userDoc = await transaction.get(userDocRef);
+      if (!userDoc.exists) throw new Error('Profile not found');
+      const userData = userDoc.data()!;
+
+      const favoriteItems = { ...(userData.favoriteItems || {}) };
+      const key = `${item.category}s`;
+      let list = Array.isArray(favoriteItems[key]) ? [...favoriteItems[key]] : [];
+
+      if (list.includes(itemId)) {
+        list = list.filter((id: string) => id !== itemId);
+        isAdded = false;
+      } else {
+        list.push(itemId);
+        isAdded = true;
+      }
+      favoriteItems[key] = list;
+
+      transaction.update(userDocRef, { favoriteItems });
+    });
+
+    const freshUserDoc = await userDocRef.get();
+    res.json({
+      success: true,
+      message: isAdded ? `${item.name} added to favorites` : `${item.name} removed from favorites`,
+      profile: freshUserDoc.data()
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to update favorites.' });
   }
 });
 
@@ -941,6 +989,18 @@ app.post('/api/auth/lucky-spin', strictAuthLimiter, verifyToken, async (req: Aut
       if (!userDoc.exists) throw new Error('Profile not found');
       const userData = userDoc.data()!;
 
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const isFreeSpin = userData.lastSpinDate !== todayStr;
+      const spinCost = GAME_CONFIG.coins?.luckySpinCost ?? 50;
+
+      let currentCoins = userData.coins || 0;
+      if (!isFreeSpin) {
+        if (currentCoins < spinCost) {
+          throw new Error(`Insufficient coins for additional lucky spin (${spinCost} coins required)`);
+        }
+        currentCoins -= spinCost;
+      }
+
       sector = rollLuckySpin();
       const oldXp = Number(userData.xp ?? userData.totalXp ?? 0);
       const earnedXp = sector.type === 'xp' ? sector.value : 0;
@@ -953,7 +1013,7 @@ app.post('/api/auth/lucky-spin', strictAuthLimiter, verifyToken, async (req: Aut
         referenceId: `spin_${Date.now()}`
       });
 
-      let coins = (userData.coins || 0) + (sector.type === 'coins' ? sector.value : 0);
+      let coins = currentCoins + (sector.type === 'coins' ? sector.value : 0);
       let mysteryBoxes = (userData.mysteryBoxes || 0) + (sector.type === 'mystery_box' ? sector.value : 0);
 
       if (earnedXp > 0) {
@@ -966,7 +1026,8 @@ app.post('/api/auth/lucky-spin', strictAuthLimiter, verifyToken, async (req: Aut
         totalXp: spinEval.xpAfter,
         coins,
         level: spinEval.levelAfter,
-        mysteryBoxes
+        mysteryBoxes,
+        lastSpinDate: todayStr
       });
     });
 
@@ -1122,7 +1183,7 @@ app.post('/api/auth/battle-room/create', strictAuthLimiter, verifyToken, async (
           displayName: userData.displayName || 'Host Cadet',
           photoURL: userData.photoURL || '',
           level: userData.level || 1,
-          battleRating: userData.battleRating || 1200,
+          battleRating: userData.battleRating || GAME_CONFIG.elo.startingRating || 1000,
           ready: true,
           online: true,
           score: 0,
@@ -1210,7 +1271,7 @@ app.post('/api/auth/battle-room/join', strictAuthLimiter, verifyToken, async (re
       displayName: userData.displayName || 'Candidate',
       photoURL: userData.photoURL || '',
       level: userData.level || 1,
-      battleRating: userData.battleRating || 1200,
+      battleRating: userData.battleRating || GAME_CONFIG.elo.startingRating || 1000,
       ready: false,
       online: true,
       score: 0,

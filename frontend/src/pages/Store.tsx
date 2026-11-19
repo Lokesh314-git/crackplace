@@ -12,6 +12,7 @@ export const Store: React.FC = () => {
   const [openingBox, setOpeningBox] = useState(false);
   const [boxResult, setBoxResult] = useState<string | null>(null);
   const [purchasingId, setPurchasingId] = useState<string | null>(null);
+  const [equippingId, setEquippingId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -52,7 +53,24 @@ export const Store: React.FC = () => {
     else if (item.category === 'theme') ownedList = userProfile.unlockedThemes || [];
     else if (item.category === 'emote') ownedList = userProfile.unlockedEmotes || [];
     else if (item.category === 'sticker') ownedList = userProfile.unlockedStickers || [];
+    else if (item.category === 'entrance') ownedList = userProfile.unlockedEntrances || [];
+    else if (item.category === 'victory') ownedList = userProfile.unlockedVictories || [];
     return ownedList.includes(item.id);
+  };
+
+  // Check if item is actively equipped
+  const isEquipped = (item: CosmeticItem) => {
+    if (!userProfile) return false;
+    if (item.category === 'avatar') return userProfile.equippedAvatar === item.id || (!userProfile.equippedAvatar && item.id === 'avatar_starter');
+    if (item.category === 'ring') return userProfile.equippedRing === item.id;
+    if (item.category === 'frame') return userProfile.equippedFrame === item.id;
+    if (item.category === 'background') return userProfile.equippedBackground === item.id;
+    if (item.category === 'title') return userProfile.equippedTitle === item.id;
+    if (item.category === 'theme') return userProfile.equippedTheme === item.id;
+    if (item.category === 'emote') return userProfile.equippedEmote === item.id;
+    if (item.category === 'entrance') return userProfile.equippedEntrance === item.id;
+    if (item.category === 'victory') return userProfile.equippedVictory === item.id;
+    return false;
   };
 
   // Preview a shop item
@@ -127,7 +145,9 @@ export const Store: React.FC = () => {
         throw new Error(err.error || 'Lucky Spin failed');
       }
       const data = await res.json();
-      // Relying on onSnapshot for state sync
+      if (data.profile) {
+        useAuthStore.setState({ userProfile: data.profile });
+      }
       setSpinResult(data.message);
     } catch (err: any) {
       setErrorMessage(err.message || 'Spin execution failed');
@@ -158,7 +178,9 @@ export const Store: React.FC = () => {
         throw new Error(err.error || 'Failed to open box');
       }
       const data = await res.json();
-      // Relying on onSnapshot for state sync
+      if (data.profile) {
+        useAuthStore.setState({ userProfile: data.profile });
+      }
       setBoxResult(data.message);
     } catch (err: any) {
       setErrorMessage(err.message || 'Box open failed');
@@ -185,12 +207,83 @@ export const Store: React.FC = () => {
         throw new Error(err.error || 'Purchase failed');
       }
       const data = await res.json();
-      // Relying on onSnapshot for state sync
+      if (data.profile) {
+        useAuthStore.setState({ userProfile: data.profile });
+      }
       setSuccessMessage(data.message);
     } catch (err: any) {
       setErrorMessage(err.message || 'Store purchase failed');
     } finally {
       setPurchasingId(null);
+    }
+  };
+
+  const handleEquipItem = async (item: CosmeticItem) => {
+    setEquippingId(item.id);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    try {
+      const res = await fetch('/api/auth/profile/equip', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ category: item.category, itemId: item.id })
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to equip item');
+      }
+      const data = await res.json();
+      if (data.profile) {
+        useAuthStore.setState({ userProfile: data.profile });
+      }
+      if (item.category === 'avatar') setPreviewAvatar(item.id);
+      else if (item.category === 'ring') setPreviewRing(item.id);
+      else if (item.category === 'frame') setPreviewFrame(item.id);
+      else if (item.category === 'background') setPreviewBg(item.id);
+      else if (item.category === 'title') setPreviewTitle(item.id);
+
+      setSuccessMessage(data.message || `Equipped ${item.name}!`);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Equip failed');
+    } finally {
+      setEquippingId(null);
+    }
+  };
+
+  const handleUnequipItem = async (item: CosmeticItem) => {
+    setEquippingId(item.id);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    try {
+      const res = await fetch('/api/auth/profile/equip', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ category: item.category, itemId: null })
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to unequip item');
+      }
+      const data = await res.json();
+      if (data.profile) {
+        useAuthStore.setState({ userProfile: data.profile });
+      }
+      if (item.category === 'ring') setPreviewRing('');
+      else if (item.category === 'frame') setPreviewFrame('');
+      else if (item.category === 'background') setPreviewBg('');
+      else if (item.category === 'title') setPreviewTitle('');
+
+      setSuccessMessage(data.message || `Unequipped ${item.name}`);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Unequip failed');
+    } finally {
+      setEquippingId(null);
     }
   };
 
@@ -297,10 +390,13 @@ export const Store: React.FC = () => {
                 { id: 'avatar', label: 'Avatars' },
                 { id: 'ring', label: 'Rings' },
                 { id: 'frame', label: 'Frames' },
-                { id: 'background', label: 'Themes' },
+                { id: 'background', label: 'Backgrounds' },
                 { id: 'title', label: 'Titles' },
-                { id: 'theme', label: 'Styles' },
-                { id: 'emote', label: 'Emotes' }
+                { id: 'theme', label: 'Themes' },
+                { id: 'emote', label: 'Emotes' },
+                { id: 'entrance', label: 'Entrances' },
+                { id: 'victory', label: 'Victories' },
+                { id: 'sticker', label: 'Stickers' }
               ].map(tab => (
                 <button
                   key={tab.id}
@@ -391,9 +487,16 @@ export const Store: React.FC = () => {
                 >
                   {/* Category thumbnail preview */}
                   <div className="flex flex-col items-center justify-center text-center space-y-2 pt-1">
-                    <div className="w-12 h-12 rounded-xl bg-surface-elevated border border-border-dark flex items-center justify-center overflow-hidden">
+                    <div className="w-12 h-12 rounded-xl bg-surface-elevated border border-border-dark flex items-center justify-center overflow-hidden shrink-0">
                       {item.category === 'avatar' && (
-                        <img src={getAvatarUrl(item.visual)} alt={item.name} className="w-10 h-10 rounded-full" />
+                        <img
+                          src={getAvatarUrl(item.visual)}
+                          alt={item.name}
+                          className="w-10 h-10 rounded-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(item.visual)}`;
+                          }}
+                        />
                       )}
                       {item.category === 'ring' && (
                         <div className={`w-10 h-10 rounded-full border bg-surface-dark ${getRingClass(item.id)}`} />
@@ -405,13 +508,24 @@ export const Store: React.FC = () => {
                         <div className={`w-10 h-10 border ${getFrameClass(item.id)}`} />
                       )}
                       {item.category === 'title' && (
-                        <span className="text-[10px] text-brand-400 font-bold uppercase">T</span>
+                        <span className="text-[9px] font-bold text-brand-400 px-1 py-0.5 rounded bg-brand-500/10 border border-brand-500/20 text-center leading-tight truncate max-w-[42px]" title={item.visual}>
+                          {item.visual}
+                        </span>
                       )}
                       {item.category === 'emote' && (
                         <span className="text-xl leading-none">{item.visual}</span>
                       )}
                       {item.category === 'theme' && (
                         <span className="text-xl leading-none">🎨</span>
+                      )}
+                      {item.category === 'entrance' && (
+                        <span className="text-xl leading-none">⚡</span>
+                      )}
+                      {item.category === 'victory' && (
+                        <span className="text-xl leading-none">🏆</span>
+                      )}
+                      {item.category === 'sticker' && (
+                        <span className="text-xl leading-none">{item.visual}</span>
                       )}
                     </div>
 
@@ -436,20 +550,49 @@ export const Store: React.FC = () => {
                       </span>
                     )}
 
-                    {owned ? (
-                      <span className="px-2 py-0.5 rounded-md bg-surface-elevated text-text-muted text-[10px] font-medium">
-                        {(item.isFree || item.cost === 0) ? 'Available' : 'Owned'}
-                      </span>
+                    {isEquipped(item) ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (item.category !== 'avatar') {
+                            handleUnequipItem(item);
+                          }
+                        }}
+                        disabled={equippingId !== null}
+                        className="px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold tracking-wide transition-colors cursor-pointer hover:bg-emerald-500/25 flex items-center gap-1 shrink-0"
+                        title={item.category === 'avatar' ? 'Currently equipped avatar' : 'Click to unequip'}
+                      >
+                        <span className="text-xs">✓</span> {equippingId === item.id ? '...' : 'Equipped'}
+                      </button>
+                    ) : owned ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEquipItem(item);
+                        }}
+                        disabled={equippingId !== null}
+                        className="px-2.5 py-1 rounded-lg bg-surface-elevated hover:bg-surface-dark border border-border-dark text-text-primary hover:text-white font-semibold text-[10px] transition-colors cursor-pointer shrink-0"
+                      >
+                        {equippingId === item.id ? '...' : 'Equip'}
+                      </button>
+                    ) : userProfile.coins < item.cost ? (
+                      <button
+                        disabled
+                        className="px-2 py-1 rounded-lg bg-surface-elevated/60 border border-rose-500/20 text-rose-400/80 font-medium text-[9px] cursor-not-allowed shrink-0"
+                        title={`Need ${item.cost - userProfile.coins} more coins`}
+                      >
+                        Insufficient Coins
+                      </button>
                     ) : (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           handleBuyItem(item.id);
                         }}
-                        disabled={purchasingId !== null || userProfile.coins < item.cost}
-                        className="px-2.5 py-1 rounded-lg bg-brand-600 hover:bg-brand-500 disabled:bg-surface-elevated disabled:text-text-muted disabled:cursor-not-allowed text-white font-semibold text-[10px] transition-colors cursor-pointer"
+                        disabled={purchasingId !== null}
+                        className="px-2.5 py-1 rounded-lg bg-brand-600 hover:bg-brand-500 text-white font-semibold text-[10px] transition-colors cursor-pointer shadow-xs flex items-center gap-1 shrink-0"
                       >
-                        {purchasingId === item.id ? '...' : 'Unlock'}
+                        {purchasingId === item.id ? 'Unlocking...' : 'Unlock'}
                       </button>
                     )}
                   </div>

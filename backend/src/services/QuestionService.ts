@@ -5,7 +5,7 @@ import { Question, SanitizedQuestion } from '../types/question';
 import { supabase, isSupabaseConfigured } from '../config/supabase';
 import { redisClient } from '../config/redis';
 import logger from '../utils/logger';
-import { isTopicMatch, isSubtopicMatch, normalizeSubjectSlug as normalizeSlugCanonical } from '../constants/subjects';
+import { isTopicMatch, isSubtopicMatch, normalizeSubjectSlug as normalizeSlugCanonical, SUBJECTS } from '../constants/subjects';
 
 export interface PlayerQuestionPackage {
   sanitizedQuestions: SanitizedQuestion[];
@@ -311,10 +311,30 @@ export class QuestionService {
               topicQuery = topicQuery.ilike('difficulty', diffUpper);
             }
 
-            // Search using exact and variant patterns
-            topicQuery = topicQuery.or(
-              `topic.ilike.%${topicRaw}%,topic.ilike.%${topicRaw.replace(/&/g, 'and')}%,topic.ilike.%${topicRaw.replace(/\sand\s/gi, ' & ')}%`
-            );
+            // Search using exact and variant patterns including taxonomy aliases
+            const topicVariants = new Set<string>();
+            topicVariants.add(topicRaw);
+            topicVariants.add(topicRaw.replace(/&/g, 'and'));
+            topicVariants.add(topicRaw.replace(/\sand\s/gi, ' & '));
+
+            const subCfg = SUBJECTS[subjectSlug];
+            if (subCfg && subCfg.topics) {
+              for (const top of subCfg.topics) {
+                if (isTopicMatch(top.name, topicRaw)) {
+                  topicVariants.add(top.name);
+                  if (top.aliases) {
+                    top.aliases.forEach(a => topicVariants.add(a));
+                  }
+                }
+              }
+            }
+
+            const orConditions = Array.from(topicVariants)
+              .filter(t => t && t.trim().length > 0)
+              .map(t => `topic.ilike.%${t.trim()}%`)
+              .join(',');
+
+            topicQuery = topicQuery.or(orConditions);
 
             const { data: topicData, error: topicError } = await topicQuery.limit(count * 5);
 
@@ -479,6 +499,28 @@ export class QuestionService {
       subtopic
     });
     return practiceResult.questions.slice(0, count);
+  }
+
+  /**
+   * Authoritative question count for a subject across Supabase and curated local bank
+   */
+  public static async getQuestionCountForSubject(category: string): Promise<number> {
+    const slug = this.normalizeSubjectSlug(category);
+    if (isSupabaseConfigured) {
+      try {
+        const { count: sbCount, error } = await supabase
+          .from('questions')
+          .select('id', { count: 'exact', head: true })
+          .eq('subject', slug);
+        if (!error && typeof sbCount === 'number' && sbCount > 0) {
+          return sbCount;
+        }
+      } catch (e: any) {
+        logger.warn('[QuestionService] Supabase count query failed, using local bank fallback', { error: e.message });
+      }
+    }
+    const local = getCuratedBank().filter(q => this.normalizeSubjectSlug(q.category) === slug);
+    return local.length;
   }
 
   /**

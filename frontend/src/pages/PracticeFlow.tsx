@@ -273,6 +273,9 @@ export const PracticeFlow: React.FC = () => {
 
       const data = await response.json();
       finishQuiz(data.results, data.reviewQuestions);
+      if (data.profile) {
+        useAuthStore.setState({ userProfile: data.profile });
+      }
       // Synchronize URL with ?review=${currentQuiz.id} so browser refresh directly restores this scorecard
       setSearchParams({ review: currentQuiz.id }, { replace: true });
     } catch (err: any) {
@@ -328,8 +331,48 @@ export const PracticeFlow: React.FC = () => {
         </div>
 
         {errorMessage && (
-          <div className="p-4 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs">
-            {errorMessage}
+          <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs space-y-2">
+            <p className="font-medium">{errorMessage}</p>
+            <div className="flex flex-wrap gap-2 pt-1">
+              {selectedTopic !== 'All' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedTopic('All');
+                    setSelectedSubtopic('All');
+                    setErrorMessage(null);
+                  }}
+                  className="px-2.5 py-1 rounded bg-amber-100 hover:bg-amber-200 text-amber-800 font-semibold text-[11px] transition-colors"
+                >
+                  Switch to All Topics
+                </button>
+              )}
+              {selectedCount > 5 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCount(5);
+                    setErrorMessage(null);
+                  }}
+                  className="px-2.5 py-1 rounded bg-amber-100 hover:bg-amber-200 text-amber-800 font-semibold text-[11px] transition-colors"
+                >
+                  Reduce to 5 Questions
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedTopic('All');
+                  setSelectedSubtopic('All');
+                  setSelectedDifficulty('medium');
+                  setSelectedCount(5);
+                  setErrorMessage(null);
+                }}
+                className="px-2.5 py-1 rounded bg-white border border-amber-300 hover:bg-amber-50 text-amber-800 font-semibold text-[11px] transition-colors"
+              >
+                Reset All Filters
+              </button>
+            </div>
           </div>
         )}
 
@@ -423,7 +466,7 @@ export const PracticeFlow: React.FC = () => {
         <div className="space-y-1">
           <h3 className="text-base font-bold text-slate-900">Loading Supabase Questions</h3>
           <p className="text-xs text-slate-500 max-w-sm">
-            Retrieving authenticated questions for {selectedCategory} ({selectedDifficulty} tier)...
+            Retrieving authenticated questions for {subjectConfig.name} ({selectedDifficulty} tier)...
           </p>
         </div>
       </div>
@@ -433,7 +476,35 @@ export const PracticeFlow: React.FC = () => {
   // State 3: Active Quiz Workspace
   if (quizStatus === 'active' && currentQuiz) {
     if (normalizeSubjectSlug(currentQuiz.category) !== selectedCategory) {
-      return null;
+      return (
+        <div className="max-w-md mx-auto my-12 p-6 rounded-xl border border-slate-200 bg-white text-center space-y-4 shadow-sm">
+          <h2 className="text-lg font-bold text-slate-900">Active Quiz in Progress</h2>
+          <p className="text-xs text-slate-600">
+            You currently have an in-progress session in <span className="font-semibold text-blue-600">{currentQuiz.category}</span>.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2 pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                resetQuizState();
+                initializeSubjectSession(selectedCategory);
+              }}
+              className="flex-1"
+            >
+              Discard & Start Here
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => navigate(`/practice/${encodeURIComponent(normalizeSubjectSlug(currentQuiz.category))}`)}
+              className="flex-1"
+            >
+              Resume Quiz
+            </Button>
+          </div>
+        </div>
+      );
     }
     const questions = currentQuiz.questions;
     const currentQuestion = questions[currentQuestionIndex];

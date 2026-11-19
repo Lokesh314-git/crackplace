@@ -1,6 +1,6 @@
 import { QuestionInsert, CSVRow, ValidatedCSVRow } from '../types';
 import { normalizeQuestionInput, getDuplicateFingerprint, normalizeText } from './normalization';
-import { DEFAULT_SUBJECTS } from '../constants/subjects';
+import { DEFAULT_SUBJECTS, normalizeSubjectSlug } from '../constants/subjects';
 
 export interface FormValidationResult {
   isValid: boolean;
@@ -98,7 +98,8 @@ export function validateCSVRow(
   if (!rawSubject) {
     errors.push('Subject column is required.');
   } else if (validSubjectSlugs && !validSubjectSlugs.has(rawSubject)) {
-    const found = DEFAULT_SUBJECTS.some((s) => s.slug === rawSubject || s.name.toLowerCase() === rawSubject);
+    const normSub = normalizeSubjectSlug(rawSubject);
+    const found = validSubjectSlugs.has(normSub) || DEFAULT_SUBJECTS.some((s) => s.slug === normSub || s.name.toLowerCase() === rawSubject.toLowerCase());
     if (!found) {
       warnings.push(`Unknown subject identifier '${rawSubject}'. Will be registered dynamically.`);
     }

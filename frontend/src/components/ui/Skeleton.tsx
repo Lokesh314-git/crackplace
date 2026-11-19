@@ -22,7 +22,7 @@ export const Skeleton: React.FC<SkeletonProps> = ({
 
   return (
     <div
-      className={`skeleton bg-slate-800/80 ${variantStyles[variant]} ${className}`}
+      className={`skeleton bg-slate-200 dark:bg-slate-800/80 animate-pulse ${variantStyles[variant]} ${className}`}
       style={{
         width: width,
         height: height,

@@ -4,13 +4,13 @@ import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyDemoFallbackKeyForLocalDev314159',
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyB1P2VBP82rZ3y3pJqzeQsGE_Hl9sVbdfc',
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'crackprep-webapp.firebaseapp.com',
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'crackprep-webapp',
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'crackprep-webapp.firebasestorage.app',
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '1234567890',
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:1234567890:web:devAppId',
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || 'G-DEVAPP'
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '1060022259206',
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:1060022259206:web:760e6130a83940aeb2bd87',
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || 'G-27NGQ7R3LH'
 };
 
 const app = initializeApp(firebaseConfig);

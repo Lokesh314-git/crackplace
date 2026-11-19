@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
 import Navbar from './Navbar';
-import { Outlet, NavLink } from 'react-router-dom';
+import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { 
   FaHouse, 
   FaCode, 
@@ -13,7 +13,11 @@ import {
   FaStore,
   FaGear,
   FaCrown,
-  FaUsers
+  FaUsers,
+  FaComments,
+  FaLayerGroup,
+  FaUserShield,
+  FaRightFromBracket
 } from 'react-icons/fa6';
 import { useAuthStore } from '../../store/authStore';
 import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/firestore';
@@ -21,10 +25,20 @@ import { db } from '../../config/firebase';
 import { Modal, Button } from '../ui';
 
 export const DashboardLayout: React.FC = () => {
-  const { userProfile } = useAuthStore();
+  const { userProfile, logout } = useAuthStore();
+  const navigate = useNavigate();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [showLevelUpModal, setShowLevelUpModal] = useState<{ levelBefore?: number; levelAfter: number; earnedXp?: number } | null>(null);
   const [activeToast, setActiveToast] = useState<{ id: string; type: string; title: string; message: string } | null>(null);
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/login');
+    } catch (err) {
+      console.error('Logout failed:', err);
+    }
+  };
 
   useEffect(() => {
     const handleLevelUp = (e: Event) => {
@@ -105,74 +119,221 @@ export const DashboardLayout: React.FC = () => {
         </main>
       </div>
 
-      {/* Mobile Slide Drawer for secondary links */}
+      {/* Mobile Slide Drawer for navigation */}
       {isDrawerOpen && (
         <div className="fixed inset-0 z-50 flex md:hidden bg-slate-900/40 backdrop-blur-xs animate-fade-in">
-          <div className="w-72 bg-white border-r border-slate-200 p-5 space-y-6 flex flex-col justify-between shadow-xl">
+          <div className="w-80 max-w-[85vw] bg-white border-r border-slate-200 p-5 space-y-4 flex flex-col justify-between shadow-xl overflow-y-auto">
             <div className="space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <span className="font-bold text-sm text-slate-900">More Resources</span>
+                <div className="flex items-center gap-2.5">
+                  <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-blue-600 text-white font-bold text-sm shadow-xs">
+                    C
+                  </div>
+                  <span className="font-bold text-sm text-slate-900">
+                    CrackPlace <span className="text-blue-600">AI</span>
+                  </span>
+                </div>
                 <button
                   onClick={() => setIsDrawerOpen(false)}
                   className="p-1.5 rounded-md text-slate-400 hover:text-slate-700 cursor-pointer"
+                  aria-label="Close menu"
                 >
                   <FaXmark className="w-4 h-4" />
                 </button>
               </div>
 
-              <nav className="space-y-1">
-                <NavLink
-                  to="/study-notes"
-                  onClick={() => setIsDrawerOpen(false)}
-                  className={({ isActive }) => `
-                    flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-colors
-                    ${isActive ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}
-                  `}
-                >
-                  <FaBookOpen className="w-4 h-4 text-slate-400" />
-                  <span>Study Notes & Revision</span>
-                </NavLink>
+              <nav className="space-y-4 text-xs">
+                {/* Learning & Practice */}
+                <div className="space-y-1">
+                  <span className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                    LEARNING & PRACTICE
+                  </span>
+                  <NavLink
+                    to="/dashboard"
+                    onClick={() => setIsDrawerOpen(false)}
+                    className={({ isActive }) => `
+                      flex items-center gap-3 px-3 py-2 rounded-lg font-medium transition-colors
+                      ${isActive ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}
+                    `}
+                  >
+                    <FaHouse className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span>Dashboard</span>
+                  </NavLink>
+                  <NavLink
+                    to="/practice"
+                    onClick={() => setIsDrawerOpen(false)}
+                    className={({ isActive }) => `
+                      flex items-center gap-3 px-3 py-2 rounded-lg font-medium transition-colors
+                      ${isActive ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}
+                    `}
+                  >
+                    <FaLayerGroup className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span>Practice Hub</span>
+                  </NavLink>
+                  <NavLink
+                    to="/coding"
+                    onClick={() => setIsDrawerOpen(false)}
+                    className={({ isActive }) => `
+                      flex items-center gap-3 px-3 py-2 rounded-lg font-medium transition-colors
+                      ${isActive ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}
+                    `}
+                  >
+                    <FaCode className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span>Coding Workspace</span>
+                  </NavLink>
+                  <NavLink
+                    to="/hr-interview"
+                    onClick={() => setIsDrawerOpen(false)}
+                    className={({ isActive }) => `
+                      flex items-center gap-3 px-3 py-2 rounded-lg font-medium transition-colors
+                      ${isActive ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}
+                    `}
+                  >
+                    <FaComments className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span>HR Practice</span>
+                  </NavLink>
+                </div>
 
-                <NavLink
-                  to="/store"
-                  onClick={() => setIsDrawerOpen(false)}
-                  className={({ isActive }) => `
-                    flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-colors
-                    ${isActive ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}
-                  `}
-                >
-                  <FaStore className="w-4 h-4 text-slate-400" />
-                  <span>Armory Rewards Store</span>
-                </NavLink>
+                {/* Compete & Rewards */}
+                <div className="space-y-1">
+                  <span className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                    COMPETE & REWARDS
+                  </span>
+                  <NavLink
+                    to="/battle"
+                    onClick={() => setIsDrawerOpen(false)}
+                    className={({ isActive }) => `
+                      flex items-center gap-3 px-3 py-2 rounded-lg font-medium transition-colors
+                      ${isActive ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}
+                    `}
+                  >
+                    <FaGamepad className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span>Battle Arena</span>
+                  </NavLink>
+                  <NavLink
+                    to="/leaderboard"
+                    onClick={() => setIsDrawerOpen(false)}
+                    className={({ isActive }) => `
+                      flex items-center gap-3 px-3 py-2 rounded-lg font-medium transition-colors
+                      ${isActive ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}
+                    `}
+                  >
+                    <FaTrophy className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span>Leaderboards</span>
+                  </NavLink>
+                  <NavLink
+                    to="/store"
+                    onClick={() => setIsDrawerOpen(false)}
+                    className={({ isActive }) => `
+                      flex items-center gap-3 px-3 py-2 rounded-lg font-medium transition-colors
+                      ${isActive ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}
+                    `}
+                  >
+                    <FaStore className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span>Armory Rewards Store</span>
+                  </NavLink>
+                  <NavLink
+                    to="/invite-promote"
+                    onClick={() => setIsDrawerOpen(false)}
+                    className={({ isActive }) => `
+                      flex items-center gap-3 px-3 py-2 rounded-lg font-medium transition-colors
+                      ${isActive ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}
+                    `}
+                  >
+                    <FaUsers className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span>Invite & Promote</span>
+                  </NavLink>
+                </div>
 
-                <NavLink
-                  to="/invite-promote"
-                  onClick={() => setIsDrawerOpen(false)}
-                  className={({ isActive }) => `
-                    flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-colors
-                    ${isActive ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}
-                  `}
-                >
-                  <FaUsers className="w-4 h-4 text-slate-400" />
-                  <span>Invite & Promote</span>
-                </NavLink>
+                {/* Resources & Account */}
+                <div className="space-y-1">
+                  <span className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                    RESOURCES & ACCOUNT
+                  </span>
+                  <NavLink
+                    to="/study-notes"
+                    onClick={() => setIsDrawerOpen(false)}
+                    className={({ isActive }) => `
+                      flex items-center gap-3 px-3 py-2 rounded-lg font-medium transition-colors
+                      ${isActive ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}
+                    `}
+                  >
+                    <FaBookOpen className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span>Study Notes & Revision</span>
+                  </NavLink>
+                  <NavLink
+                    to="/profile"
+                    onClick={() => setIsDrawerOpen(false)}
+                    className={({ isActive }) => `
+                      flex items-center gap-3 px-3 py-2 rounded-lg font-medium transition-colors
+                      ${isActive ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}
+                    `}
+                  >
+                    <FaUser className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span>My Profile</span>
+                  </NavLink>
+                  <NavLink
+                    to="/personalization"
+                    onClick={() => setIsDrawerOpen(false)}
+                    className={({ isActive }) => `
+                      flex items-center gap-3 px-3 py-2 rounded-lg font-medium transition-colors
+                      ${isActive ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}
+                    `}
+                  >
+                    <FaGear className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span>Customization Settings</span>
+                  </NavLink>
+                </div>
 
-                <NavLink
-                  to="/personalization"
-                  onClick={() => setIsDrawerOpen(false)}
-                  className={({ isActive }) => `
-                    flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-colors
-                    ${isActive ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}
-                  `}
-                >
-                  <FaGear className="w-4 h-4 text-slate-400" />
-                  <span>Customization Settings</span>
-                </NavLink>
+                {/* Administration */}
+                {userProfile?.role === 'admin' && (
+                  <div className="space-y-1 pt-2 border-t border-slate-100">
+                    <span className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                      ADMINISTRATION
+                    </span>
+                    <NavLink
+                      to="/admin"
+                      onClick={() => setIsDrawerOpen(false)}
+                      className={({ isActive }) => `
+                        flex items-center gap-3 px-3 py-2 rounded-lg font-medium transition-colors
+                        ${isActive ? 'bg-purple-50 text-purple-700 font-semibold' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}
+                      `}
+                    >
+                      <FaUserShield className="w-4 h-4 text-slate-400 shrink-0" />
+                      <span>Admin Panel</span>
+                    </NavLink>
+                  </div>
+                )}
               </nav>
             </div>
 
-            <div className="pt-4 border-t border-slate-100 text-[11px] text-slate-400 text-center">
-              CrackPlace AI • Modern Placement Suite
+            {/* Drawer Footer with User Card & Logout */}
+            <div className="pt-3 border-t border-slate-100 space-y-2">
+              {userProfile && (
+                <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-200">
+                  <div className="min-w-0 pr-2">
+                    <p className="text-xs font-semibold text-slate-900 truncate">
+                      {userProfile.displayName || 'Candidate'}
+                    </p>
+                    <p className="text-[10px] text-slate-500">
+                      Level {userProfile.level || 1} • {userProfile.coins || 0} Coins
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setIsDrawerOpen(false);
+                      handleLogout();
+                    }}
+                    title="Sign Out"
+                    className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                  >
+                    <FaRightFromBracket className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+              <div className="text-[10px] text-slate-400 text-center">
+                CrackPlace AI • Placement Suite
+              </div>
             </div>
           </div>
 

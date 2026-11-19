@@ -170,6 +170,7 @@ export const COSMETICS_CATALOG: CosmeticItem[] = [
   { id: 'frame_antigravity', name: 'Antigravity Glow', category: 'frame', cost: 300, rarity: 'epic', visual: 'antigravity', description: 'Outlines that fade from cyan to magenta.' },
   { id: 'frame_ai_master', name: 'Neural Master', category: 'frame', cost: 500, rarity: 'legendary', visual: 'ai_master', description: 'Glowing synapses wrapping around your card.' },
   { id: 'frame_gladiator', name: 'Arena Gladiator', category: 'frame', cost: 300, rarity: 'epic', visual: 'gladiator', description: 'Studded heavy bronze plate.' },
+  { id: 'frame_mystery_elite', name: 'Elite Gladiator', category: 'frame', cost: 400, rarity: 'epic', visual: 'gladiator', description: 'Exclusive arena gladiator frame obtained from mystery boxes.' },
   { id: 'frame_shadow', name: 'Shadow Shroud', category: 'frame', cost: 260, rarity: 'epic', visual: 'shadow', description: 'Dark shadowy border smoke glow.' },
   { id: 'frame_bronze', name: 'Bronze Border', category: 'frame', cost: 50, rarity: 'common', visual: 'bronze', description: 'Simple bronze finish.' },
   { id: 'frame_platinum', name: 'Platinum Tech', category: 'frame', cost: 180, rarity: 'rare', visual: 'platinum', description: 'Sleek brushed platinum lines.' },

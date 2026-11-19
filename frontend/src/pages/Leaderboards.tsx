@@ -407,21 +407,24 @@ export const Leaderboards: React.FC = () => {
               {topThree.map((user, idx) => {
                 const rankNum = idx + 1;
                 const isFirst = idx === 0;
+                const isSecond = idx === 1;
                 const isCurrentUser = userProfile && user.uid === userProfile.uid;
                 const isLegendary = isCurrentUser ? checkIsLegendaryPlayer(userProfile) : user.isLegendaryPlayer;
+                const orderClass = isFirst ? 'order-1 sm:order-2' : isSecond ? 'order-2 sm:order-1' : 'order-3 sm:order-3';
+
                 return (
                   <div
                     key={user.uid}
                     onClick={() => handleUserClick(user, rankNum)}
-                    className={`p-4 rounded-2xl border text-center relative flex flex-col justify-between items-center shadow-xs transition-all cursor-pointer ${
+                    className={`p-4 rounded-2xl border text-center relative flex flex-col justify-between items-center shadow-xs transition-all cursor-pointer ${orderClass} ${
                       isLegendary
                         ? 'border-yellow-400/80 bg-yellow-950/10 shadow-[0_0_15px_rgba(250,204,21,0.15)] ring-1 ring-yellow-400/50 hover:bg-yellow-900/20'
                         : isFirst 
-                          ? 'border-amber-500/40 bg-surface-dark ring-1 ring-amber-500/20 hover:bg-surface-elevated/40' 
+                          ? 'border-amber-500/40 bg-surface-dark ring-1 ring-amber-500/20 hover:bg-surface-elevated/40 sm:-translate-y-2' 
                           : idx === 1
                             ? 'border-slate-500/30 bg-surface-dark hover:bg-surface-elevated/40'
                             : 'border-amber-700/30 bg-surface-dark hover:bg-surface-elevated/40'
-                    } ${isFirst ? 'sm:-translate-y-1' : ''}`}
+                    }`}
                   >
                     <div className="flex flex-col items-center w-full mb-2 space-y-1">
                       <div className="flex items-center justify-between w-full">
@@ -487,7 +490,7 @@ export const Leaderboards: React.FC = () => {
               <div 
                 onClick={() => handleUserClick({
                   ...userProfile,
-                  battleRating: userProfile.battleRating || 1200,
+                  battleRating: userProfile.battleRating || 1000,
                   totalXp: userProfile.xp,
                   isLegendaryPlayer: isLegendary
                 } as LeaderboardUser, currentUserRankIndex >= 0 ? currentUserRankIndex + 1 : 0)}
@@ -511,7 +514,7 @@ export const Leaderboards: React.FC = () => {
                       {userProfile.displayName || 'Cadet'} <span className={`${isLegendary ? 'text-yellow-400' : 'text-brand-400'} font-normal`}>(You)</span>
                     </h4>
                     <div className="flex items-center gap-2">
-                      <p className="text-[10px] text-text-muted">Level {userProfile.level} • {userProfile.xp} XP</p>
+                      <p className="text-[10px] text-text-muted">Level {calculateLevelFromXP(userProfile.xp || 0)} • {userProfile.xp} XP</p>
                       {isLegendary && (
                         <span className="text-[9px] font-bold text-yellow-400 bg-yellow-500/20 px-1 rounded flex items-center gap-1 border border-yellow-500/30">
                           <FaCrown className="w-2 h-2" /> LEGENDARY

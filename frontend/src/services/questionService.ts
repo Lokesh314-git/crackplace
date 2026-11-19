@@ -210,31 +210,64 @@ class QuestionService {
   }
 
   /**
-   * Get total question count matching filters
+   * Get total question count matching filters with server fallback
    */
   async getQuestionCount(filters: QuestionFilterOptions = {}): Promise<number> {
-    if (!isSupabaseConfigured) return 0;
+    const normSlug = filters.subject ? normalizeSubjectSlug(filters.subject) : undefined;
+    if (isSupabaseConfigured) {
+      try {
+        let query = supabase.from('questions').select('id', { count: 'exact', head: true });
 
-    try {
-      let query = supabase.from('questions').select('id', { count: 'exact', head: true });
+        if (normSlug) {
+          query = query.eq('subject', normSlug);
+        }
+        if (filters.topic && filters.topic !== 'All') {
+          query = query.eq('topic', filters.topic);
+        }
+        if (filters.difficulty && filters.difficulty.toLowerCase() !== 'all' && filters.difficulty.toLowerCase() !== 'mixed') {
+          query = query.ilike('difficulty', filters.difficulty);
+        }
 
-      if (filters.subject) {
-        query = query.eq('subject', normalizeSubjectSlug(filters.subject));
+        const { count, error } = await query;
+        if (!error && typeof count === 'number' && count > 0) {
+          return count;
+        }
+      } catch (err) {
+        console.warn('[QuestionService] Supabase count query failed, trying backend endpoint:', err);
       }
-      if (filters.topic && filters.topic !== 'All') {
-        query = query.eq('topic', filters.topic);
-      }
-      if (filters.difficulty && filters.difficulty.toLowerCase() !== 'all' && filters.difficulty.toLowerCase() !== 'mixed') {
-        query = query.ilike('difficulty', filters.difficulty);
-      }
-
-      const { count, error } = await query;
-      if (error) throw error;
-      return count || 0;
-    } catch (err) {
-      console.error('[QuestionService] Error counting questions:', err);
-      return 0;
     }
+
+    if (normSlug) {
+      try {
+        const res = await fetch(`/api/quiz/taxonomy/${encodeURIComponent(normSlug)}/count`);
+        if (res.ok) {
+          const data = await res.json();
+          if (typeof data.count === 'number') return data.count;
+        }
+      } catch (e) {
+        // silent fallback
+      }
+    }
+
+    return 0;
+  }
+
+  /**
+   * Batch get question counts for all subjects from backend
+   */
+  async getAllQuestionCounts(): Promise<Record<string, number>> {
+    try {
+      const res = await fetch('/api/quiz/taxonomy/counts');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.counts && typeof data.counts === 'object') {
+          return data.counts;
+        }
+      }
+    } catch (e) {
+      // silent fallback
+    }
+    return {};
   }
 
   /**

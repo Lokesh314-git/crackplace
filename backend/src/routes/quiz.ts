@@ -168,6 +168,29 @@ router.get('/taxonomy', (_req, res) => {
   res.json({ subjects: SUBJECT_LIST });
 });
 
+router.get('/taxonomy/counts', async (_req, res) => {
+  try {
+    const counts: Record<string, number> = {};
+    await Promise.all(
+      SUBJECT_LIST.map(async (s) => {
+        counts[s.slug] = await QuestionService.getQuestionCountForSubject(s.slug);
+      })
+    );
+    res.json({ counts });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to calculate question counts' });
+  }
+});
+
+router.get('/taxonomy/:slug/count', async (req, res) => {
+  try {
+    const count = await QuestionService.getQuestionCountForSubject(req.params.slug);
+    res.json({ subject: req.params.slug, count });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to calculate question count' });
+  }
+});
+
 router.get('/taxonomy/:slug/topics', (req, res) => {
   const topics = getTopicsForSubject(req.params.slug);
   res.json({ topics });

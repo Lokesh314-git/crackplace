@@ -170,6 +170,7 @@ export const COSMETICS_CATALOG: CosmeticItem[] = [
   { id: 'frame_antigravity', name: 'Antigravity Glow', category: 'frame', cost: 300, rarity: 'epic', visual: 'antigravity', description: 'Outlines that fade from cyan to magenta.' },
   { id: 'frame_ai_master', name: 'Neural Master', category: 'frame', cost: 500, rarity: 'legendary', visual: 'ai_master', description: 'Glowing synapses wrapping around your card.' },
   { id: 'frame_gladiator', name: 'Arena Gladiator', category: 'frame', cost: 300, rarity: 'epic', visual: 'gladiator', description: 'Studded heavy bronze plate.' },
+  { id: 'frame_mystery_elite', name: 'Elite Gladiator', category: 'frame', cost: 400, rarity: 'epic', visual: 'gladiator', description: 'Exclusive arena gladiator frame obtained from mystery boxes.' },
   { id: 'frame_shadow', name: 'Shadow Shroud', category: 'frame', cost: 260, rarity: 'epic', visual: 'shadow', description: 'Dark shadowy border smoke glow.' },
   { id: 'frame_bronze', name: 'Bronze Border', category: 'frame', cost: 50, rarity: 'common', visual: 'bronze', description: 'Simple bronze finish.' },
   { id: 'frame_platinum', name: 'Platinum Tech', category: 'frame', cost: 180, rarity: 'rare', visual: 'platinum', description: 'Sleek brushed platinum lines.' },
@@ -392,7 +393,8 @@ export const getFrameClass = (frameId: string): string => {
     case 'frame_silicon': return 'border-4 border-cyan-600 rounded-2xl';
     case 'frame_antigravity': return 'border-4 border-purple-600 shadow-[0_0_15px_#ec4899] rounded-2xl';
     case 'frame_ai_master': return 'border-4 border-teal-500 shadow-[0_0_20px_#14b8a6] rounded-2xl';
-    case 'frame_gladiator': return 'border-4 border-yellow-800 rounded-2xl';
+    case 'frame_gladiator':
+    case 'frame_mystery_elite': return 'border-4 border-yellow-800 shadow-[0_0_15px_#ca8a04] rounded-2xl';
     case 'frame_shadow': return 'border-4 border-neutral-900 shadow-[0_0_15px_#171717] rounded-2xl';
     case 'frame_bronze': return 'border-4 border-amber-900 rounded-2xl';
     case 'frame_platinum': return 'border-4 border-slate-300 rounded-2xl';
