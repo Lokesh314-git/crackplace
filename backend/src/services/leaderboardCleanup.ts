@@ -59,28 +59,20 @@ export function isUserExcludedFromLeaderboard(data: any, uid: string): boolean {
 }
 
 /**
- * Invalidate all Redis leaderboard cache entries (global, weekly, daily, monthly, and custom limits).
+ * Invalidate all Redis leaderboard cache entries (weekly, global/all-time, college, department, friends).
  */
 export async function invalidateLeaderboardCache(): Promise<number> {
   let clearedCount = 0;
   try {
     const knownKeys = [
-      'leaderboard:global:200',
-      'leaderboard:global:100',
-      'leaderboard:global:50',
-      'leaderboard:global:25',
       'leaderboard:weekly:200',
       'leaderboard:weekly:100',
       'leaderboard:weekly:50',
       'leaderboard:weekly:25',
-      'leaderboard:daily:200',
-      'leaderboard:daily:100',
-      'leaderboard:daily:50',
-      'leaderboard:daily:25',
-      'leaderboard:monthly:200',
-      'leaderboard:monthly:100',
-      'leaderboard:monthly:50',
-      'leaderboard:monthly:25',
+      'leaderboard:global:200',
+      'leaderboard:global:100',
+      'leaderboard:global:50',
+      'leaderboard:global:25',
       'leaderboard:college:200',
       'leaderboard:college:100',
       'leaderboard:college:50',

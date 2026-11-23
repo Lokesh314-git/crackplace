@@ -400,6 +400,7 @@ app.get('/api/leaderboard', verifyToken, async (req: AuthenticatedRequest, res) 
   let callerXp = 0;
   let callerCollege: string | null = null;
   let callerDept: string | null = null;
+  let callerFriends: string[] = [];
   let isCallerAdmin = req.user?.role === 'admin';
 
   try {
@@ -410,6 +411,11 @@ app.get('/api/leaderboard', verifyToken, async (req: AuthenticatedRequest, res) 
       callerLevel = calculateLevelFromXP(callerXp);
       callerCollege = callerData.college || null;
       callerDept = callerData.department || null;
+      if (Array.isArray(callerData.friends)) {
+        callerFriends = callerData.friends;
+      } else if (Array.isArray(callerData.friendUids)) {
+        callerFriends = callerData.friendUids;
+      }
       if (callerData.role === 'admin') {
         isCallerAdmin = true;
       }
@@ -436,12 +442,40 @@ app.get('/api/leaderboard', verifyToken, async (req: AuthenticatedRequest, res) 
     });
   }
 
-  const rankingType = String(req.query.type || 'global').toLowerCase();
+  const rankingType = String(req.query.type || 'weekly').toLowerCase();
+
+  // Deprecate Daily and Monthly leaderboard categories
+  if (rankingType === 'daily' || rankingType === 'monthly') {
+    return res.status(400).json({
+      error: 'Daily and Monthly leaderboards are no longer supported. Please use weekly, global, college, department, or friends.',
+      code: 'INVALID_CATEGORY'
+    });
+  }
+
+  // Populate friends from referrals if user has referred any users
+  if (rankingType === 'friends') {
+    try {
+      const refSnap = await db.collection('referrals').where('referrerId', '==', callerId).get();
+      if (refSnap && !refSnap.empty) {
+        refSnap.forEach((doc: any) => {
+          const d = doc.data() || {};
+          if (d.referredUserId && !callerFriends.includes(d.referredUserId)) {
+            callerFriends.push(d.referredUserId);
+          }
+        });
+      }
+    } catch {
+      // Safe fallback
+    }
+  }
+
   const limitCount = Math.min(200, Math.max(1, Number(req.query.limit) || 100));
   const filterCollege = req.query.college ? String(req.query.college).trim() : (rankingType === 'college' ? callerCollege : null);
   const filterDept = req.query.department ? String(req.query.department).trim() : (rankingType === 'department' ? callerDept : null);
 
-  const cacheKey = `leaderboard:${rankingType}:${limitCount}${filterCollege ? `:${filterCollege}` : ''}${filterDept ? `:${filterDept}` : ''}`;
+  const cacheKey = rankingType === 'friends'
+    ? `leaderboard:friends:${callerId}:${limitCount}`
+    : `leaderboard:${rankingType}:${limitCount}${filterCollege ? `:${filterCollege}` : ''}${filterDept ? `:${filterDept}` : ''}`;
 
   try {
     const cached = await redisClient.get(cacheKey);
@@ -486,8 +520,6 @@ app.get('/api/leaderboard', verifyToken, async (req: AuthenticatedRequest, res) 
         xp: rawXp,
         totalXp: rawXp,
         weeklyXp: 0,
-        dailyXp: 0,
-        monthlyXp: 0,
         college: data.college || null,
         department: data.department || null,
         equippedRing: data.equippedRing || null,
@@ -498,24 +530,14 @@ app.get('/api/leaderboard', verifyToken, async (req: AuthenticatedRequest, res) 
       });
     });
 
-    // Time-scoped XP calculations from xpTransactions
-    if ((rankingType === 'weekly' || rankingType === 'daily' || rankingType === 'monthly') && userMap.size > 0) {
+    // Time-scoped XP calculations from xpTransactions for Weekly Sprint leaderboard
+    if (rankingType === 'weekly' && userMap.size > 0) {
       const now = new Date();
-      let startTimeIso: string;
-
-      if (rankingType === 'daily') {
-        const startOfDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
-        startTimeIso = startOfDay.toISOString();
-      } else if (rankingType === 'monthly') {
-        const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
-        startTimeIso = startOfMonth.toISOString();
-      } else {
-        // Weekly (Monday 00:00:00 UTC)
-        const day = now.getUTCDay(); // 0 is Sunday, 1 is Monday
-        const diff = now.getUTCDate() - day + (day === 0 ? -6 : 1);
-        const startOfWeek = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), diff, 0, 0, 0, 0));
-        startTimeIso = startOfWeek.toISOString();
-      }
+      // Weekly (Monday 00:00:00 UTC)
+      const day = now.getUTCDay(); // 0 is Sunday, 1 is Monday
+      const diff = now.getUTCDate() - day + (day === 0 ? -6 : 1);
+      const startOfWeek = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), diff, 0, 0, 0, 0));
+      const startTimeIso = startOfWeek.toISOString();
 
       try {
         const txSnap = await db.collection('xpTransactions')
@@ -528,13 +550,7 @@ app.get('/api/leaderboard', verifyToken, async (req: AuthenticatedRequest, res) 
             const u = userMap.get(txData.userId);
             if (u) {
               const earned = Number(txData.xpEarned || 0);
-              if (rankingType === 'daily') {
-                u.dailyXp = (u.dailyXp || 0) + earned;
-              } else if (rankingType === 'monthly') {
-                u.monthlyXp = (u.monthlyXp || 0) + earned;
-              } else {
-                u.weeklyXp = (u.weeklyXp || 0) + earned;
-              }
+              u.weeklyXp = (u.weeklyXp || 0) + earned;
             }
           });
         }
@@ -545,33 +561,20 @@ app.get('/api/leaderboard', verifyToken, async (req: AuthenticatedRequest, res) 
 
     let rankList = Array.from(userMap.values());
 
-    // Apply category filters if requested
-    if (filterCollege) {
+    // Apply category filters
+    if (rankingType === 'college' && filterCollege) {
       const targetCollege = filterCollege.toLowerCase();
       rankList = rankList.filter(u => u.college && u.college.toLowerCase().includes(targetCollege));
-    }
-
-    if (filterDept) {
+    } else if (rankingType === 'department' && filterDept) {
       const targetDept = filterDept.toLowerCase();
       rankList = rankList.filter(u => u.department && u.department.toLowerCase().includes(targetDept));
+    } else if (rankingType === 'friends') {
+      const allowedFriends = new Set([callerId, ...callerFriends]);
+      rankList = rankList.filter(u => allowedFriends.has(u.uid));
     }
 
     // Deterministic sorting rules
-    if (rankingType === 'daily') {
-      rankList.sort((a, b) => {
-        if (b.dailyXp !== a.dailyXp) return (b.dailyXp || 0) - (a.dailyXp || 0);
-        if (b.battleRating !== a.battleRating) return b.battleRating - a.battleRating;
-        if (b.xp !== a.xp) return b.xp - a.xp;
-        return a.uid.localeCompare(b.uid);
-      });
-    } else if (rankingType === 'monthly') {
-      rankList.sort((a, b) => {
-        if (b.monthlyXp !== a.monthlyXp) return (b.monthlyXp || 0) - (a.monthlyXp || 0);
-        if (b.battleRating !== a.battleRating) return b.battleRating - a.battleRating;
-        if (b.xp !== a.xp) return b.xp - a.xp;
-        return a.uid.localeCompare(b.uid);
-      });
-    } else if (rankingType === 'weekly') {
+    if (rankingType === 'weekly') {
       rankList.sort((a, b) => {
         if (b.weeklyXp !== a.weeklyXp) return (b.weeklyXp || 0) - (a.weeklyXp || 0);
         if (b.battleRating !== a.battleRating) return b.battleRating - a.battleRating;
@@ -579,6 +582,7 @@ app.get('/api/leaderboard', verifyToken, async (req: AuthenticatedRequest, res) 
         return a.uid.localeCompare(b.uid);
       });
     } else {
+      // All-Time Global, College, Department, and Friends
       rankList.sort((a, b) => {
         if (b.battleRating !== a.battleRating) return b.battleRating - a.battleRating;
         if (b.xp !== a.xp) return b.xp - a.xp;

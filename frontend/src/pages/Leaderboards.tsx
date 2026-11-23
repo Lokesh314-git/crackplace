@@ -1,12 +1,14 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
-import { FaCrown, FaMagnifyingGlass, FaArrowRotateRight, FaCircleExclamation, FaTrophy, FaLock, FaRegClock, FaBolt, FaGraduationCap } from 'react-icons/fa6';
+import { FaCrown, FaMagnifyingGlass, FaArrowRotateRight, FaCircleExclamation, FaTrophy, FaLock, FaRegClock, FaBolt, FaGraduationCap, FaBuilding, FaUsers } from 'react-icons/fa6';
 import { getUserAvatarUrl, getAvatarImageUrl, SYSTEM_DEFAULT_AVATAR_VISUAL } from '../utils/avatarResolver';
 import { checkIsLegendaryPlayer } from '../config/cosmetics';
 import { ProfilePreviewModal } from '../components/profile/ProfilePreviewModal';
 import type { ProfilePreviewData } from '../components/profile/ProfilePreviewModal';
 import { calculateLevelFromXP } from '../utils/levelCalculator';
+
+export type LeaderboardTab = 'weekly' | 'global' | 'college' | 'department' | 'friends';
 
 interface LeaderboardUser {
   uid: string;
@@ -58,7 +60,7 @@ export const Leaderboards: React.FC = () => {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<'global' | 'weekly' | 'daily' | 'monthly' | 'college'>('global');
+  const [tab, setTab] = useState<LeaderboardTab>('weekly');
 
   const [selectedUser, setSelectedUser] = useState<LeaderboardUser | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -101,7 +103,7 @@ export const Leaderboards: React.FC = () => {
     }
   };
 
-  const fetchLeaderboard = useCallback(async (selectedTab: 'global' | 'weekly' | 'daily' | 'monthly' | 'college') => {
+  const fetchLeaderboard = useCallback(async (selectedTab: LeaderboardTab) => {
     setLoading(true);
     setError(null);
 
@@ -111,7 +113,7 @@ export const Leaderboards: React.FC = () => {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const res = await fetch(`/api/leaderboard?type=${selectedTab}`, { headers });
+      const res = await fetch(`/api/leaderboard?type=${selectedTab}&limit=200`, { headers });
       const data = await res.json();
 
       if (!res.ok) {
@@ -302,83 +304,131 @@ export const Leaderboards: React.FC = () => {
               </span>
             )}
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-text-primary tracking-tight mt-1">Global Rankings</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-text-primary tracking-tight mt-1">
+            {tab === 'weekly' && 'Weekly Leaderboard'}
+            {tab === 'global' && 'All-Time Leaderboard'}
+            {tab === 'college' && 'College Rankings'}
+            {tab === 'department' && 'Department Rankings'}
+            {tab === 'friends' && 'Friends Rankings'}
+          </h1>
           <p className="text-text-secondary text-sm mt-0.5">
-            {tab === 'global' && 'Top performing placement candidates ranked by competitive Elo and total XP.'}
             {tab === 'weekly' && 'Weekly sprint contenders ranked by practice XP earned since Monday.'}
-            {tab === 'daily' && "Today's top performers ranked by practice XP earned today."}
-            {tab === 'monthly' && 'Monthly leaderboard leaders ranked by practice XP earned this month.'}
-            {tab === 'college' && `Top contenders from ${userProfile?.college || 'your college'} ranked by competitive Elo.`}
+            {tab === 'global' && 'All-time placement candidates ranked by competitive Elo and total XP.'}
+            {tab === 'college' && (userProfile?.college ? `Top contenders from ${userProfile.college} ranked by competitive Elo.` : 'Top contenders ranked by college affiliation.')}
+            {tab === 'department' && (userProfile?.department ? `Top contenders from ${userProfile.department} department ranked by competitive Elo.` : 'Top contenders ranked by department affiliation.')}
+            {tab === 'friends' && 'Private standings comparing your competitive rating directly against your friends and recruits.'}
           </p>
         </div>
 
         {/* Tab & Refresh selector */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex bg-surface-dark border border-border-dark p-1 rounded-xl shadow-xs flex-wrap">
-            <button
-              onClick={() => setTab('global')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                tab === 'global' 
-                  ? 'bg-brand-600 text-white shadow-xs' 
-                  : 'text-text-muted hover:text-text-primary'
-              }`}
-            >
-              All-Time Global
-            </button>
+        <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 bg-surface-dark border border-border-dark p-1.5 rounded-xl shadow-xs w-full sm:w-auto">
             <button
               onClick={() => setTab('weekly')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+              className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                 tab === 'weekly' 
-                  ? 'bg-brand-600 text-white shadow-xs' 
-                  : 'text-text-muted hover:text-text-primary'
+                  ? 'bg-brand-600 text-white shadow-xs font-bold' 
+                  : 'text-text-muted hover:text-text-primary hover:bg-surface-elevated/40'
               }`}
             >
-              Weekly Sprint
+              <FaBolt className="w-3.5 h-3.5 text-amber-400" />
+              <span>Weekly</span>
             </button>
             <button
-              onClick={() => setTab('daily')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                tab === 'daily' 
-                  ? 'bg-brand-600 text-white shadow-xs' 
-                  : 'text-text-muted hover:text-text-primary'
+              onClick={() => setTab('global')}
+              className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                tab === 'global' 
+                  ? 'bg-brand-600 text-white shadow-xs font-bold' 
+                  : 'text-text-muted hover:text-text-primary hover:bg-surface-elevated/40'
               }`}
             >
-              Daily
+              <FaCrown className="w-3.5 h-3.5 text-yellow-400" />
+              <span>All-Time</span>
             </button>
             <button
-              onClick={() => setTab('monthly')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                tab === 'monthly' 
+              onClick={() => setTab('college')}
+              className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                tab === 'college' 
                   ? 'bg-brand-600 text-white shadow-xs' 
-                  : 'text-text-muted hover:text-text-primary'
+                  : 'text-text-muted hover:text-text-primary hover:bg-surface-elevated/40'
               }`}
             >
-              Monthly
+              <FaGraduationCap className="w-3.5 h-3.5 text-indigo-400" />
+              <span>College</span>
             </button>
-            {userProfile?.college && (
-              <button
-                onClick={() => setTab('college')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  tab === 'college' 
-                    ? 'bg-brand-600 text-white shadow-xs' 
-                    : 'text-text-muted hover:text-text-primary'
-                }`}
-              >
-                College
-              </button>
-            )}
+            <button
+              onClick={() => setTab('department')}
+              className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                tab === 'department' 
+                  ? 'bg-brand-600 text-white shadow-xs' 
+                  : 'text-text-muted hover:text-text-primary hover:bg-surface-elevated/40'
+              }`}
+            >
+              <FaBuilding className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Department</span>
+            </button>
+            <button
+              onClick={() => setTab('friends')}
+              className={`col-span-2 sm:col-span-1 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                tab === 'friends' 
+                  ? 'bg-brand-600 text-white shadow-xs' 
+                  : 'text-text-muted hover:text-text-primary hover:bg-surface-elevated/40'
+              }`}
+            >
+              <FaUsers className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Friends</span>
+            </button>
           </div>
 
           <button
             onClick={() => fetchLeaderboard(tab)}
             title="Refresh Rankings"
             disabled={loading}
-            className="p-2.5 rounded-xl bg-surface-dark border border-border-dark hover:bg-surface-elevated text-text-muted hover:text-text-primary transition-colors cursor-pointer disabled:opacity-50"
+            className="p-2.5 rounded-xl bg-surface-dark border border-border-dark hover:bg-surface-elevated text-text-muted hover:text-text-primary transition-colors cursor-pointer disabled:opacity-50 shrink-0 self-end sm:self-center"
           >
             <FaArrowRotateRight className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>
+
+      {/* College affiliation guidance banner */}
+      {tab === 'college' && !userProfile?.college && (
+        <div className="p-3.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-2">
+            <FaGraduationCap className="w-4 h-4 shrink-0 text-indigo-400" />
+            <span>Set your <strong>College</strong> in Profile Settings to filter standings for your campus.</span>
+          </div>
+          <Link to="/profile" className="px-2.5 py-1 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 font-semibold text-indigo-200 transition-colors">
+            Edit Profile
+          </Link>
+        </div>
+      )}
+
+      {/* Department affiliation guidance banner */}
+      {tab === 'department' && !userProfile?.department && (
+        <div className="p-3.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-xs flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-2">
+            <FaBuilding className="w-4 h-4 shrink-0 text-cyan-400" />
+            <span>Set your <strong>Department</strong> in Profile Settings to filter standings for your department.</span>
+          </div>
+          <Link to="/profile" className="px-2.5 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 font-semibold text-cyan-200 transition-colors">
+            Edit Profile
+          </Link>
+        </div>
+      )}
+
+      {/* Friends private leaderboard guidance banner */}
+      {tab === 'friends' && ranks.length <= 1 && (
+        <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-2">
+            <FaUsers className="w-4 h-4 shrink-0 text-emerald-400" />
+            <span>Invite your friends or recruits to compare standings on your private friends leaderboard!</span>
+          </div>
+          <Link to="/invite" className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 font-semibold text-emerald-200 transition-colors">
+            Invite Friends
+          </Link>
+        </div>
+      )}
 
       {/* Error state */}
       {error && !loading && (
@@ -475,9 +525,21 @@ export const Leaderboards: React.FC = () => {
             <FaTrophy className="w-6 h-6" />
           </div>
           <div className="space-y-1">
-            <h3 className="font-bold text-base text-text-primary">No Ranked Candidates Yet</h3>
+            <h3 className="font-bold text-base text-text-primary">
+              {tab === 'college' ? 'No College Contenders Yet' :
+               tab === 'department' ? 'No Department Contenders Yet' :
+               tab === 'friends' ? 'No Friends Ranked Yet' :
+               tab === 'weekly' ? 'No Weekly Contenders Yet' :
+               'No Ranked Candidates Yet'}
+            </h3>
             <p className="text-xs text-text-muted max-w-sm mx-auto leading-relaxed">
-              Complete a 1v1 battle, coding challenge, or practice quiz to claim the #1 spot on the leaderboard!
+              {tab === 'friends' 
+                ? 'Invite friends using your invite code to start competing on your private leaderboard.' 
+                : tab === 'college'
+                ? 'Be the first from your college to claim a spot on the campus leaderboard by practicing or battling!'
+                : tab === 'department'
+                ? 'Be the first from your department to claim a spot on the leaderboard by practicing or battling!'
+                : 'Complete a 1v1 battle, coding challenge, or practice quiz to claim the #1 spot on the leaderboard!'}
             </p>
           </div>
         </div>

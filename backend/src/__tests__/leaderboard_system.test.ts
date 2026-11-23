@@ -53,7 +53,10 @@ describe('Authoritative Leaderboard System Suite', () => {
       level: 4,
       xp: 950,
       totalXp: 950,
-      battleRating: 1450
+      battleRating: 1450,
+      college: 'Tech University',
+      department: 'Computer Science',
+      friends: ['real_user_beta']
     });
 
     await db.collection('users').doc('real_user_beta').set({
@@ -62,7 +65,9 @@ describe('Authoritative Leaderboard System Suite', () => {
       level: 3,
       xp: 600,
       totalXp: 600,
-      battleRating: 1300
+      battleRating: 1300,
+      college: 'Tech University',
+      department: 'Computer Science'
     });
 
     await db.collection('users').doc('real_user_gamma').set({
@@ -71,7 +76,9 @@ describe('Authoritative Leaderboard System Suite', () => {
       level: 3,
       xp: 300,
       totalXp: 300,
-      battleRating: 1300 // Tied in Elo with Beta, but lower XP
+      battleRating: 1300, // Tied in Elo with Beta, but lower XP
+      college: 'State University',
+      department: 'Electrical Engineering'
     });
 
     // Seed Level 1 and Level 2 users who must be locked out and excluded from all leaderboards
@@ -413,7 +420,7 @@ describe('Authoritative Leaderboard System Suite', () => {
     expect(res.body.xpNeeded).toBe(70); // 250 - 180 = 70
   });
 
-  it('12. strictly excludes Level 1 and Level 2 users from leaderboard query results across all categories', async () => {
+  it('12. strictly excludes Level 1 and Level 2 users from leaderboard query results across all active categories', async () => {
     await invalidateLeaderboardCache();
 
     // Check All-Time Global
@@ -436,25 +443,35 @@ describe('Authoritative Leaderboard System Suite', () => {
     expect(weeklyUids).not.toContain('user_lvl1_ineligible');
     expect(weeklyUids).not.toContain('user_lvl2_ineligible');
 
-    // Check Daily
-    const dailyRes = await request(app)
-      .get('/api/leaderboard?type=daily')
+    // Check College Rankings
+    const collegeRes = await request(app)
+      .get('/api/leaderboard?type=college')
       .set('Authorization', 'Bearer real_user_token_1');
 
-    expect(dailyRes.status).toBe(200);
-    const dailyUids = dailyRes.body.map((u: any) => u.uid);
-    expect(dailyUids).not.toContain('user_lvl1_ineligible');
-    expect(dailyUids).not.toContain('user_lvl2_ineligible');
+    expect(collegeRes.status).toBe(200);
+    const collegeUids = collegeRes.body.map((u: any) => u.uid);
+    expect(collegeUids).not.toContain('user_lvl1_ineligible');
+    expect(collegeUids).not.toContain('user_lvl2_ineligible');
 
-    // Check Monthly
-    const monthlyRes = await request(app)
-      .get('/api/leaderboard?type=monthly')
+    // Check Department Rankings
+    const deptRes = await request(app)
+      .get('/api/leaderboard?type=department')
       .set('Authorization', 'Bearer real_user_token_1');
 
-    expect(monthlyRes.status).toBe(200);
-    const monthlyUids = monthlyRes.body.map((u: any) => u.uid);
-    expect(monthlyUids).not.toContain('user_lvl1_ineligible');
-    expect(monthlyUids).not.toContain('user_lvl2_ineligible');
+    expect(deptRes.status).toBe(200);
+    const deptUids = deptRes.body.map((u: any) => u.uid);
+    expect(deptUids).not.toContain('user_lvl1_ineligible');
+    expect(deptUids).not.toContain('user_lvl2_ineligible');
+
+    // Check Friends Rankings
+    const friendsRes = await request(app)
+      .get('/api/leaderboard?type=friends')
+      .set('Authorization', 'Bearer real_user_token_1');
+
+    expect(friendsRes.status).toBe(200);
+    const friendsUids = friendsRes.body.map((u: any) => u.uid);
+    expect(friendsUids).not.toContain('user_lvl1_ineligible');
+    expect(friendsUids).not.toContain('user_lvl2_ineligible');
   });
 
   it('13. user reaches Level 3 and automatically unlocks Rankings and appears in results', async () => {
@@ -549,5 +566,53 @@ describe('Authoritative Leaderboard System Suite', () => {
     expect(lvl1Data.displayName).toBe('Level One Cadet');
     expect(lvl1Data.xp).toBe(50);
     expect(lvl1Data.totalXp).toBe(50);
+  });
+
+  it('16. completely rejects deprecated daily and monthly leaderboard categories with 400 INVALID_CATEGORY', async () => {
+    await invalidateLeaderboardCache();
+
+    const dailyRes = await request(app)
+      .get('/api/leaderboard?type=daily')
+      .set('Authorization', 'Bearer real_user_token_1');
+    expect(dailyRes.status).toBe(400);
+    expect(dailyRes.body.code).toBe('INVALID_CATEGORY');
+
+    const monthlyRes = await request(app)
+      .get('/api/leaderboard?type=monthly')
+      .set('Authorization', 'Bearer real_user_token_1');
+    expect(monthlyRes.status).toBe(400);
+    expect(monthlyRes.body.code).toBe('INVALID_CATEGORY');
+  });
+
+  it('17. correctly filters Department rankings to candidates belonging to caller department', async () => {
+    await invalidateLeaderboardCache();
+
+    const deptRes = await request(app)
+      .get('/api/leaderboard?type=department')
+      .set('Authorization', 'Bearer real_user_token_1');
+
+    expect(deptRes.status).toBe(200);
+    const uids = deptRes.body.map((u: any) => u.uid);
+    // Both Alpha and Beta belong to Computer Science
+    expect(uids).toContain('real_user_alpha');
+    expect(uids).toContain('real_user_beta');
+    // Gamma belongs to Electrical Engineering, must be filtered out
+    expect(uids).not.toContain('real_user_gamma');
+  });
+
+  it('18. correctly filters Friends rankings to caller and their connected friends', async () => {
+    await invalidateLeaderboardCache();
+
+    const friendsRes = await request(app)
+      .get('/api/leaderboard?type=friends')
+      .set('Authorization', 'Bearer real_user_token_1');
+
+    expect(friendsRes.status).toBe(200);
+    const uids = friendsRes.body.map((u: any) => u.uid);
+    // Alpha is caller, Beta is in Alpha friends list
+    expect(uids).toContain('real_user_alpha');
+    expect(uids).toContain('real_user_beta');
+    // Gamma is not a friend, must be excluded
+    expect(uids).not.toContain('real_user_gamma');
   });
 });
