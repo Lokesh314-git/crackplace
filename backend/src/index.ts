@@ -443,11 +443,12 @@ app.get('/api/leaderboard', verifyToken, async (req: AuthenticatedRequest, res) 
   }
 
   const rankingType = String(req.query.type || 'weekly').toLowerCase();
+  const sortByMetric = String(req.query.sortBy || '').toLowerCase();
 
   // Deprecate Daily and Monthly leaderboard categories
   if (rankingType === 'daily' || rankingType === 'monthly') {
     return res.status(400).json({
-      error: 'Daily and Monthly leaderboards are no longer supported. Please use weekly, global, college, department, or friends.',
+      error: 'Daily and Monthly leaderboards are no longer supported. Please use weekly, global (all-time), elo, college, department, or friends.',
       code: 'INVALID_CATEGORY'
     });
   }
@@ -474,13 +475,56 @@ app.get('/api/leaderboard', verifyToken, async (req: AuthenticatedRequest, res) 
   const filterDept = req.query.department ? String(req.query.department).trim() : (rankingType === 'department' ? callerDept : null);
 
   const cacheKey = rankingType === 'friends'
-    ? `leaderboard:friends:${callerId}:${limitCount}`
-    : `leaderboard:${rankingType}:${limitCount}${filterCollege ? `:${filterCollege}` : ''}${filterDept ? `:${filterDept}` : ''}`;
+    ? `leaderboard:friends:${callerId}:${limitCount}${sortByMetric ? `:${sortByMetric}` : ''}`
+    : `leaderboard:${rankingType}:${limitCount}${filterCollege ? `:${filterCollege}` : ''}${filterDept ? `:${filterDept}` : ''}${sortByMetric ? `:${sortByMetric}` : ''}`;
+
+  const wantsObject = req.headers['x-response-format'] === 'object' || req.query.format === 'object';
 
   try {
     const cached = await redisClient.get(cacheKey);
     if (cached) {
-      return res.json(JSON.parse(cached));
+      const cachedUsers = JSON.parse(cached);
+      const userList = Array.isArray(cachedUsers) ? cachedUsers : (cachedUsers.users || []);
+      const callerRankIndex = userList.findIndex((u: any) => u.uid === callerId);
+      let callerMeta: any = null;
+      if (callerRankIndex >= 0) {
+        callerMeta = {
+          ...userList[callerRankIndex],
+          rank: callerRankIndex + 1
+        };
+      } else if (isCallerAdmin || callerLevel >= 3) {
+        callerMeta = {
+          uid: callerId,
+          displayName: req.user?.displayName || 'Cadet',
+          level: callerLevel,
+          battleRating: Number(req.user?.battleRating || 1000),
+          xp: callerXp,
+          totalXp: callerXp,
+          weeklyXp: 0,
+          college: callerCollege,
+          department: callerDept,
+          rank: null,
+          isCohortUnranked: true
+        };
+      }
+
+      if (callerMeta) {
+        res.set('x-current-user-rank', String(callerMeta.rank ?? ''));
+        res.set('x-current-user-meta', JSON.stringify(callerMeta));
+      }
+      res.set('x-total-eligible-users', String(userList.length));
+      res.set('Access-Control-Expose-Headers', 'x-current-user-rank, x-total-eligible-users, x-current-user-meta');
+
+      if (wantsObject) {
+        return res.json({
+          users: userList,
+          currentUser: callerMeta,
+          totalEligibleUsers: userList.length,
+          rankingType,
+          limit: limitCount
+        });
+      }
+      return res.json(userList);
     }
   } catch (err) {
     // Ignore redis read error and fallback to live authoritative DB query
@@ -489,6 +533,11 @@ app.get('/api/leaderboard', verifyToken, async (req: AuthenticatedRequest, res) 
   try {
     const snapshot = await db.collection('users').get();
     const userMap = new Map<string, any>();
+
+    const seasonBoundaries = SeasonService.getSeasonBoundaries();
+    const currentSeasonId = seasonBoundaries.seasonId;
+    const seasonStartIso = seasonBoundaries.startDate.toISOString();
+    const seasonStartMs = seasonBoundaries.startDate.getTime();
 
     snapshot.forEach((doc: any) => {
       const data = doc.data() || {};
@@ -510,16 +559,21 @@ app.get('/api/leaderboard', verifyToken, async (req: AuthenticatedRequest, res) 
       const battleRating = Number(data.battleRating ?? data.eloRating ?? GAME_CONFIG.elo.startingRating ?? 1000);
       const resolvedAvatar = resolveUserAvatar(data);
 
+      // Extract weekly XP from user document if aligned with current season
+      const userDocWeeklyXp = (data.lastWeeklyResetSeasonId === currentSeasonId)
+        ? Number(data.weeklyXp ?? data.weeklyXP ?? 0)
+        : 0;
+
       userMap.set(uid, {
         uid,
-        displayName: data.displayName || 'Cadet',
+        displayName: data.displayName || data.username || 'Cadet',
         photoURL: resolvedAvatar.url,
         equippedAvatar: resolvedAvatar.id,
         level: computedLevel,
         battleRating,
         xp: rawXp,
         totalXp: rawXp,
-        weeklyXp: 0,
+        weeklyXp: userDocWeeklyXp,
         college: data.college || null,
         department: data.department || null,
         equippedRing: data.equippedRing || null,
@@ -530,33 +584,43 @@ app.get('/api/leaderboard', verifyToken, async (req: AuthenticatedRequest, res) 
       });
     });
 
-    // Time-scoped XP calculations from xpTransactions for Weekly Sprint leaderboard
-    if (rankingType === 'weekly' && userMap.size > 0) {
-      const now = new Date();
-      // Weekly (Monday 00:00:00 UTC)
-      const day = now.getUTCDay(); // 0 is Sunday, 1 is Monday
-      const diff = now.getUTCDate() - day + (day === 0 ? -6 : 1);
-      const startOfWeek = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), diff, 0, 0, 0, 0));
-      const startTimeIso = startOfWeek.toISOString();
-
+    // Time-scoped XP calculations from xpTransactions (support both ISO strings & Firestore Timestamp objects)
+    if (userMap.size > 0) {
       try {
         const txSnap = await db.collection('xpTransactions')
-          .where('createdAt', '>=', startTimeIso)
+          .where('createdAt', '>=', seasonStartIso)
           .get();
 
         if (txSnap && !txSnap.empty) {
           txSnap.forEach((txDoc: any) => {
-            const txData = txDoc.data();
+            const txData = txDoc.data() || {};
             const u = userMap.get(txData.userId);
             if (u) {
-              const earned = Number(txData.xpEarned || 0);
-              u.weeklyXp = (u.weeklyXp || 0) + earned;
+              let isCurrentSeason = txData.seasonId === currentSeasonId;
+              if (!isCurrentSeason && txData.createdAt) {
+                const txTime = typeof txData.createdAt === 'string'
+                  ? new Date(txData.createdAt).getTime()
+                  : (typeof txData.createdAt.toDate === 'function' ? txData.createdAt.toDate().getTime() : 0);
+                if (txTime >= seasonStartMs) {
+                  isCurrentSeason = true;
+                }
+              }
+              if (isCurrentSeason) {
+                const earned = Number(txData.xpEarned || 0);
+                u._txWeeklyXp = (u._txWeeklyXp || 0) + earned;
+              }
             }
           });
         }
       } catch (txErr) {
-        logger.warn('Time-scoped XP transactions query failed, falling back to profile XP sort', { error: String(txErr) });
+        logger.warn('Time-scoped XP transactions query failed, using user document weekly XP', { error: String(txErr) });
       }
+
+      // Merge verified transaction sums with user document values
+      userMap.forEach((u) => {
+        u.weeklyXp = Math.max(u.weeklyXp || 0, u._txWeeklyXp || 0);
+        delete u._txWeeklyXp;
+      });
     }
 
     let rankList = Array.from(userMap.values());
@@ -573,34 +637,93 @@ app.get('/api/leaderboard', verifyToken, async (req: AuthenticatedRequest, res) 
       rankList = rankList.filter(u => allowedFriends.has(u.uid));
     }
 
-    // Deterministic sorting rules
+    // Deterministic sorting rules per category metric
     if (rankingType === 'weekly') {
+      // 1. Weekly Sprint: Rank strictly by Weekly XP
       rankList.sort((a, b) => {
-        if (b.weeklyXp !== a.weeklyXp) return (b.weeklyXp || 0) - (a.weeklyXp || 0);
-        if (b.battleRating !== a.battleRating) return b.battleRating - a.battleRating;
-        if (b.xp !== a.xp) return b.xp - a.xp;
+        const diffWeeklyXp = (b.weeklyXp || 0) - (a.weeklyXp || 0);
+        if (diffWeeklyXp !== 0) return diffWeeklyXp;
+        const diffTotalXp = (b.totalXp || 0) - (a.totalXp || 0);
+        if (diffTotalXp !== 0) return diffTotalXp;
+        const diffElo = (b.battleRating || 0) - (a.battleRating || 0);
+        if (diffElo !== 0) return diffElo;
+        return a.uid.localeCompare(b.uid);
+      });
+    } else if (rankingType === 'elo' || sortByMetric === 'elo') {
+      // 2. Competitive / Elo Rating: Rank strictly by current Elo
+      rankList.sort((a, b) => {
+        const diffElo = (b.battleRating || 0) - (a.battleRating || 0);
+        if (diffElo !== 0) return diffElo;
+        const diffTotalXp = (b.totalXp || 0) - (a.totalXp || 0);
+        if (diffTotalXp !== 0) return diffTotalXp;
         return a.uid.localeCompare(b.uid);
       });
     } else {
-      // All-Time Global, College, Department, and Friends
+      // 3. All-Time Global, College, Department, and Friends: Rank strictly by Total XP
       rankList.sort((a, b) => {
-        if (b.battleRating !== a.battleRating) return b.battleRating - a.battleRating;
-        if (b.xp !== a.xp) return b.xp - a.xp;
+        const diffTotalXp = (b.totalXp || 0) - (a.totalXp || 0);
+        if (diffTotalXp !== 0) return diffTotalXp;
+        const diffElo = (b.battleRating || 0) - (a.battleRating || 0);
+        if (diffElo !== 0) return diffElo;
         return a.uid.localeCompare(b.uid);
       });
     }
 
-    // Attach 1-based rank dynamically
+    // Calculate current user's authoritative position across ALL eligible users before slicing
+    const callerRankIndex = rankList.findIndex(u => u.uid === callerId);
+    let currentUserMeta: any = null;
+
+    if (callerRankIndex >= 0) {
+      currentUserMeta = {
+        ...rankList[callerRankIndex],
+        rank: callerRankIndex + 1
+      };
+    } else if (isCallerAdmin || callerLevel >= 3) {
+      currentUserMeta = {
+        uid: callerId,
+        displayName: req.user?.displayName || 'Cadet',
+        level: callerLevel,
+        battleRating: Number(req.user?.battleRating || 1000),
+        xp: callerXp,
+        totalXp: callerXp,
+        weeklyXp: 0,
+        college: callerCollege,
+        department: callerDept,
+        rank: null,
+        isCohortUnranked: true
+      };
+    }
+
+    // Attach 1-based rank dynamically to page results
     const rankedUsers = rankList.slice(0, limitCount).map((user, idx) => ({
       ...user,
       rank: idx + 1
     }));
+
+    const responsePayload = {
+      users: rankedUsers,
+      currentUser: currentUserMeta,
+      totalEligibleUsers: rankList.length,
+      rankingType,
+      limit: limitCount
+    };
 
     // Cache results in Redis for 60 seconds
     try {
       await redisClient.set(cacheKey, JSON.stringify(rankedUsers), 'EX', 60);
     } catch {
       // Safe ignore
+    }
+
+    if (currentUserMeta) {
+      res.set('x-current-user-rank', String(currentUserMeta?.rank ?? ''));
+      res.set('x-current-user-meta', JSON.stringify(currentUserMeta));
+    }
+    res.set('x-total-eligible-users', String(rankList.length));
+    res.set('Access-Control-Expose-Headers', 'x-current-user-rank, x-total-eligible-users, x-current-user-meta');
+
+    if (wantsObject) {
+      return res.json(responsePayload);
     }
 
     return res.json(rankedUsers);

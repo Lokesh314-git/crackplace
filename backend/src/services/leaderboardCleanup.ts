@@ -21,8 +21,8 @@ export function isUserExcludedFromLeaderboard(data: any, uid: string): boolean {
     return true;
   }
 
-  // 3. Explicit leaderboard ineligibility flag
-  if (data.ineligibleForLeaderboard === true || data.leaderboardEligible === false) {
+  // 3. Explicit manual exclusion by admin
+  if (data.ineligibleForLeaderboard === true) {
     return true;
   }
 
@@ -73,6 +73,10 @@ export async function invalidateLeaderboardCache(): Promise<number> {
       'leaderboard:global:100',
       'leaderboard:global:50',
       'leaderboard:global:25',
+      'leaderboard:elo:200',
+      'leaderboard:elo:100',
+      'leaderboard:elo:50',
+      'leaderboard:elo:25',
       'leaderboard:college:200',
       'leaderboard:college:100',
       'leaderboard:college:50',

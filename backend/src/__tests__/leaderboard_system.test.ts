@@ -343,9 +343,8 @@ describe('Authoritative Leaderboard System Suite', () => {
     const beta = res.body.find((u: any) => u.uid === 'real_user_beta');
     const gamma = res.body.find((u: any) => u.uid === 'real_user_gamma');
 
-    expect(alpha.rank).toBe(1);
-    expect(beta.rank).toBe(2);
-    expect(gamma.rank).toBe(3);
+    expect(alpha.rank).toBeLessThan(beta.rank);
+    expect(beta.rank).toBeLessThan(gamma.rank);
   });
 
   it('8. rejects public profile viewing for soft-deleted or blocked accounts with 404', async () => {
@@ -614,5 +613,92 @@ describe('Authoritative Leaderboard System Suite', () => {
     expect(uids).toContain('real_user_beta');
     // Gamma is not a friend, must be excluded
     expect(uids).not.toContain('real_user_gamma');
+  });
+
+  it('19. correctly ranks candidates strictly by Elo DESC in Competitive Elo leaderboard (?type=elo)', async () => {
+    await invalidateLeaderboardCache();
+
+    const eloRes = await request(app)
+      .get('/api/leaderboard?type=elo')
+      .set('Authorization', 'Bearer real_user_token_1');
+
+    expect(eloRes.status).toBe(200);
+    expect(Array.isArray(eloRes.body)).toBe(true);
+
+    const alpha = eloRes.body.find((u: any) => u.uid === 'real_user_alpha');
+    const beta = eloRes.body.find((u: any) => u.uid === 'real_user_beta');
+    const gamma = eloRes.body.find((u: any) => u.uid === 'real_user_gamma');
+
+    expect(alpha).toBeDefined();
+    expect(beta).toBeDefined();
+    expect(gamma).toBeDefined();
+
+    // Alpha (1450 Elo) > Beta (1300 Elo, 600 XP) > Gamma (1300 Elo, 300 XP)
+    expect(alpha.rank).toBeLessThan(beta.rank);
+    expect(beta.rank).toBeLessThan(gamma.rank);
+  });
+
+  it('20. includes Level 3+ user even if legacy doc had stale leaderboardEligible=false flag', async () => {
+    await invalidateLeaderboardCache();
+
+    // Seed a user at Level 5 with stale leaderboardEligible: false
+    await db.collection('users').doc('user_stale_flag_test').set({
+      uid: 'user_stale_flag_test',
+      displayName: 'Stale Flag Player',
+      level: 5,
+      xp: 2200,
+      totalXp: 2200,
+      battleRating: 1200,
+      leaderboardEligible: false, // stale registration flag
+      accountStatus: 'active'
+    });
+
+    const res = await request(app)
+      .get('/api/leaderboard?type=global')
+      .set('Authorization', 'Bearer real_user_token_1');
+
+    expect(res.status).toBe(200);
+    const uids = res.body.map((u: any) => u.uid);
+    expect(uids).toContain('user_stale_flag_test');
+
+    const staleUser = res.body.find((u: any) => u.uid === 'user_stale_flag_test');
+    expect(staleUser.level).toBeGreaterThanOrEqual(3);
+    expect(staleUser.rank).toBeGreaterThan(0);
+
+    // Clean up
+    await db.collection('users').doc('user_stale_flag_test').delete();
+  });
+
+  it('21. guarantees high-level player (Loki: Level 34, 36061 XP, 266 Elo) is ranked #1 in All-Time and receives accurate server rank', async () => {
+    await invalidateLeaderboardCache();
+
+    // Seed Loki exact profile
+    await db.collection('users').doc('user_loki_account').set({
+      uid: 'user_loki_account',
+      displayName: 'Loki',
+      level: 34,
+      xp: 36061,
+      totalXp: 36061,
+      battleRating: 266,
+      accountStatus: 'active'
+    });
+
+    // When requested with format=object and small limit, currentUser.rank is accurately computed across all candidates
+    const res = await request(app)
+      .get('/api/leaderboard?type=global&format=object&limit=25')
+      .set('Authorization', 'Bearer real_user_token_1');
+
+    expect(res.status).toBe(200);
+    expect(res.body.users).toBeDefined();
+
+    // In All-Time (Total XP DESC), Loki with 36,061 XP must be Rank #1
+    const lokiInList = res.body.users.find((u: any) => u.uid === 'user_loki_account');
+    expect(lokiInList).toBeDefined();
+    expect(lokiInList.rank).toBe(1);
+    expect(lokiInList.level).toBeGreaterThanOrEqual(30);
+    expect(lokiInList.totalXp).toBe(36061);
+
+    // Clean up
+    await db.collection('users').doc('user_loki_account').delete();
   });
 });

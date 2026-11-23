@@ -60,10 +60,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
               const newProfile: UserProfile = {
                 ...rawData,
+                uid: docSnap.id || user.uid,
                 photoURL: resolvedAvatar.url,
                 equippedAvatar: rawData.equippedAvatar || resolvedAvatar.id,
                 unlockedAvatars: (rawData.unlockedAvatars && rawData.unlockedAvatars.length > 0) ? rawData.unlockedAvatars : [resolvedAvatar.id],
                 xp: xpVal,
+                totalXp: xpVal,
                 level: computedLevel,
                 leaderboardEligible: isEligible
               };

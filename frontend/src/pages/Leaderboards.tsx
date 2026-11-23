@@ -1,14 +1,14 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
-import { FaCrown, FaMagnifyingGlass, FaArrowRotateRight, FaCircleExclamation, FaTrophy, FaLock, FaRegClock, FaBolt, FaGraduationCap, FaBuilding, FaUsers } from 'react-icons/fa6';
+import { FaCrown, FaMagnifyingGlass, FaArrowRotateRight, FaCircleExclamation, FaTrophy, FaLock, FaRegClock, FaBolt, FaGraduationCap, FaBuilding, FaUsers, FaStar } from 'react-icons/fa6';
 import { getUserAvatarUrl, getAvatarImageUrl, SYSTEM_DEFAULT_AVATAR_VISUAL } from '../utils/avatarResolver';
 import { checkIsLegendaryPlayer } from '../config/cosmetics';
 import { ProfilePreviewModal } from '../components/profile/ProfilePreviewModal';
 import type { ProfilePreviewData } from '../components/profile/ProfilePreviewModal';
 import { calculateLevelFromXP } from '../utils/levelCalculator';
 
-export type LeaderboardTab = 'weekly' | 'global' | 'college' | 'department' | 'friends';
+export type LeaderboardTab = 'weekly' | 'global' | 'elo' | 'college' | 'department' | 'friends';
 
 interface LeaderboardUser {
   uid: string;
@@ -63,6 +63,7 @@ export const Leaderboards: React.FC = () => {
   const [tab, setTab] = useState<LeaderboardTab>('weekly');
 
   const [selectedUser, setSelectedUser] = useState<LeaderboardUser | null>(null);
+  const [apiCurrentUser, setApiCurrentUser] = useState<LeaderboardUser | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [unlockedBanner, setUnlockedBanner] = useState<string | null>(null);
@@ -113,7 +114,7 @@ export const Leaderboards: React.FC = () => {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const res = await fetch(`/api/leaderboard?type=${selectedTab}&limit=200`, { headers });
+      const res = await fetch(`/api/leaderboard?type=${selectedTab}&limit=200&format=object`, { headers });
       const data = await res.json();
 
       if (!res.ok) {
@@ -142,6 +143,23 @@ export const Leaderboards: React.FC = () => {
       setLockDetails(null);
 
       const rawUserList: LeaderboardUser[] = Array.isArray(data) ? data : (data.users || []);
+      if (!Array.isArray(data) && data.currentUser) {
+        setApiCurrentUser(data.currentUser);
+      } else {
+        const headerMeta = res.headers.get('x-current-user-meta');
+        const headerRank = res.headers.get('x-current-user-rank');
+        if (headerMeta) {
+          try {
+            setApiCurrentUser(JSON.parse(headerMeta));
+          } catch {
+            setApiCurrentUser(headerRank ? ({ rank: Number(headerRank) } as any) : null);
+          }
+        } else if (headerRank) {
+          setApiCurrentUser({ rank: Number(headerRank) } as any);
+        } else {
+          setApiCurrentUser(null);
+        }
+      }
       // Defense-in-depth: Exclude any soft-deleted, tombstoned, or blocked accounts and guarantee sequential ranks
       const sanitizedUsers = rawUserList
         .filter((u) => {
@@ -255,8 +273,9 @@ export const Leaderboards: React.FC = () => {
     ? remainingAll 
     : remainingAll.slice(0, showMoreThreshold - 3);
 
-  const currentUserRankIndex = userProfile ? ranks.findIndex(r => r.uid === userProfile.uid) : -1;
-  const currentUserRankDisplay = currentUserRankIndex >= 0 ? `#${currentUserRankIndex + 1}` : 'Unranked';
+  const currentUserId = userProfile?.uid || '';
+  const userInRanks = ranks.find(r => r.uid === currentUserId);
+  const effectiveUserRank = userInRanks?.rank ?? apiCurrentUser?.rank;
 
   const userActualXp = Number(userProfile?.xp ?? (userProfile as any)?.totalXp ?? 0);
   const userActualLevel = calculateLevelFromXP(userActualXp);
@@ -265,6 +284,8 @@ export const Leaderboards: React.FC = () => {
     lockDetails?.locked ||
     (userProfile && userActualLevel < 3 && userProfile.role !== 'admin')
   );
+
+  const currentUserRankDisplay = effectiveUserRank ? `#${effectiveUserRank}` : (isUserLocked ? 'Locked' : 'Unranked');
 
   const displayCurrentLevel = lockDetails?.currentLevel ?? userActualLevel;
   const displayCurrentXp = lockDetails?.currentXp ?? userActualXp;
@@ -307,22 +328,24 @@ export const Leaderboards: React.FC = () => {
           <h1 className="text-2xl sm:text-3xl font-bold text-text-primary tracking-tight mt-1">
             {tab === 'weekly' && 'Weekly Leaderboard'}
             {tab === 'global' && 'All-Time Leaderboard'}
+            {tab === 'elo' && 'Competitive Elo Rankings'}
             {tab === 'college' && 'College Rankings'}
             {tab === 'department' && 'Department Rankings'}
             {tab === 'friends' && 'Friends Rankings'}
           </h1>
           <p className="text-text-secondary text-sm mt-0.5">
             {tab === 'weekly' && 'Weekly sprint contenders ranked by practice XP earned since Monday.'}
-            {tab === 'global' && 'All-time placement candidates ranked by competitive Elo and total XP.'}
-            {tab === 'college' && (userProfile?.college ? `Top contenders from ${userProfile.college} ranked by competitive Elo.` : 'Top contenders ranked by college affiliation.')}
-            {tab === 'department' && (userProfile?.department ? `Top contenders from ${userProfile.department} department ranked by competitive Elo.` : 'Top contenders ranked by department affiliation.')}
-            {tab === 'friends' && 'Private standings comparing your competitive rating directly against your friends and recruits.'}
+            {tab === 'global' && 'All-time placement candidates ranked by total XP earned across all activities.'}
+            {tab === 'elo' && 'Top competitive battlers ranked by 1v1 Arena Elo rating.'}
+            {tab === 'college' && (userProfile?.college ? `Top contenders from ${userProfile.college} ranked by total XP.` : 'Top contenders ranked by college affiliation.')}
+            {tab === 'department' && (userProfile?.department ? `Top contenders from ${userProfile.department} department ranked by total XP.` : 'Top contenders ranked by department affiliation.')}
+            {tab === 'friends' && 'Private standings comparing your standings directly against your friends and recruits.'}
           </p>
         </div>
 
         {/* Tab & Refresh selector */}
         <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 bg-surface-dark border border-border-dark p-1.5 rounded-xl shadow-xs w-full sm:w-auto">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5 bg-surface-dark border border-border-dark p-1.5 rounded-xl shadow-xs w-full sm:w-auto">
             <button
               onClick={() => setTab('weekly')}
               className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
@@ -344,6 +367,17 @@ export const Leaderboards: React.FC = () => {
             >
               <FaCrown className="w-3.5 h-3.5 text-yellow-400" />
               <span>All-Time</span>
+            </button>
+            <button
+              onClick={() => setTab('elo')}
+              className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                tab === 'elo' 
+                  ? 'bg-brand-600 text-white shadow-xs font-bold' 
+                  : 'text-text-muted hover:text-text-primary hover:bg-surface-elevated/40'
+              }`}
+            >
+              <FaStar className="w-3.5 h-3.5 text-yellow-400" />
+              <span>Competitive</span>
             </button>
             <button
               onClick={() => setTab('college')}
@@ -630,14 +664,18 @@ export const Leaderboards: React.FC = () => {
           {/* Active User Rank Highlight Banner */}
           {userProfile && !search && (() => {
             const isLegendary = checkIsLegendaryPlayer(userProfile);
+            const userTotalXp = Number(userProfile.xp ?? (userProfile as any).totalXp ?? apiCurrentUser?.totalXp ?? 0);
+            const userWeeklyXp = apiCurrentUser?.weeklyXp ?? 0;
+            const userElo = userProfile.battleRating ?? apiCurrentUser?.battleRating ?? 1000;
             return (
               <div 
                 onClick={() => handleUserClick({
                   ...userProfile,
-                  battleRating: userProfile.battleRating || 1000,
-                  totalXp: userProfile.xp,
+                  battleRating: userElo,
+                  totalXp: userTotalXp,
+                  weeklyXp: userWeeklyXp,
                   isLegendaryPlayer: isLegendary
-                } as LeaderboardUser, currentUserRankIndex >= 0 ? currentUserRankIndex + 1 : 0)}
+                } as LeaderboardUser, effectiveUserRank || 0)}
                 className={`p-3.5 rounded-xl border flex items-center justify-between shadow-xs cursor-pointer transition-colors ${
                   isLegendary
                     ? 'border-yellow-400/60 bg-yellow-950/20 text-text-primary hover:bg-yellow-900/30 shadow-[0_0_10px_rgba(250,204,21,0.1)]'
@@ -658,7 +696,9 @@ export const Leaderboards: React.FC = () => {
                       {userProfile.displayName || 'Cadet'} <span className={`${isLegendary ? 'text-yellow-400' : 'text-brand-400'} font-normal`}>(You)</span>
                     </h4>
                     <div className="flex items-center gap-2">
-                      <p className="text-[10px] text-text-muted">Level {calculateLevelFromXP(userProfile.xp || 0)} • {userProfile.xp} XP</p>
+                      <p className="text-[10px] text-text-muted">
+                        Level {calculateLevelFromXP(userTotalXp)} • {tab === 'weekly' ? `${userWeeklyXp} Weekly XP` : `${userTotalXp} Total XP`}
+                      </p>
                       {isLegendary && (
                         <span className="text-[9px] font-bold text-yellow-400 bg-yellow-500/20 px-1 rounded flex items-center gap-1 border border-yellow-500/30">
                           <FaCrown className="w-2 h-2" /> LEGENDARY
@@ -667,8 +707,11 @@ export const Leaderboards: React.FC = () => {
                     </div>
                   </div>
                 </div>
-                <div className={`font-bold text-sm font-mono ${isLegendary ? 'text-yellow-400' : 'text-brand-400'}`}>
-                  {userProfile.battleRating} Elo
+                <div className={`font-bold text-sm font-mono text-right ${isLegendary ? 'text-yellow-400' : 'text-brand-400'}`}>
+                  {tab === 'elo' ? `${userElo} Elo` : tab === 'weekly' ? `${userWeeklyXp} XP` : `${userTotalXp} XP`}
+                  <span className="text-[10px] text-text-muted block font-normal">
+                    {tab === 'elo' ? `${userTotalXp} XP` : `${userElo} Elo`}
+                  </span>
                 </div>
               </div>
             );
@@ -682,7 +725,9 @@ export const Leaderboards: React.FC = () => {
                 <span>Candidate</span>
               </div>
               <div className="flex items-center gap-8 pr-2">
-                <span className="hidden sm:inline">{tab === 'weekly' ? 'Weekly XP' : 'Experience'}</span>
+                <span className="hidden sm:inline">
+                  {tab === 'weekly' ? 'Weekly XP' : tab === 'elo' ? 'Experience' : 'Total XP'}
+                </span>
                 <span>Rating</span>
               </div>
             </div>
@@ -731,7 +776,9 @@ export const Leaderboards: React.FC = () => {
                     <span className="text-text-muted font-mono hidden sm:inline">
                       {tab === 'weekly' ? `${user.weeklyXp || 0} XP` : `${user.xp || user.totalXp || 0} XP`}
                     </span>
-                    <span className="font-bold text-text-primary font-mono">{user.battleRating} Elo</span>
+                    <span className={`font-bold font-mono ${tab === 'elo' ? 'text-brand-400' : 'text-text-primary'}`}>
+                      {user.battleRating} Elo
+                    </span>
                   </div>
                 </div>
               );
