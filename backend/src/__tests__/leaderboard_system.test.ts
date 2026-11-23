@@ -16,6 +16,12 @@ jest.mock('../middleware/auth', () => ({
       req.user = { uid: 'real_user_alpha', email: 'alpha@real.com' };
     } else if (token === 'real_user_token_2') {
       req.user = { uid: 'real_user_beta', email: 'beta@real.com' };
+    } else if (token === 'level1_token') {
+      req.user = { uid: 'user_lvl1_ineligible', email: 'lvl1@crackplace.ai' };
+    } else if (token === 'level2_token') {
+      req.user = { uid: 'user_lvl2_ineligible', email: 'lvl2@crackplace.ai' };
+    } else if (token === 'promo_token') {
+      req.user = { uid: 'user_promo_test', email: 'promo@crackplace.ai' };
     } else {
       return res.status(401).json({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
     }
@@ -62,10 +68,31 @@ describe('Authoritative Leaderboard System Suite', () => {
     await db.collection('users').doc('real_user_gamma').set({
       uid: 'real_user_gamma',
       displayName: 'Gamma Apprentice',
-      level: 2,
+      level: 3,
       xp: 300,
       totalXp: 300,
       battleRating: 1300 // Tied in Elo with Beta, but lower XP
+    });
+
+    // Seed Level 1 and Level 2 users who must be locked out and excluded from all leaderboards
+    await db.collection('users').doc('user_lvl1_ineligible').set({
+      uid: 'user_lvl1_ineligible',
+      displayName: 'Level One Cadet',
+      level: 1,
+      xp: 50,
+      totalXp: 50,
+      battleRating: 1100,
+      accountStatus: 'active'
+    });
+
+    await db.collection('users').doc('user_lvl2_ineligible').set({
+      uid: 'user_lvl2_ineligible',
+      displayName: 'Level Two Scout',
+      level: 2,
+      xp: 180,
+      totalXp: 180,
+      battleRating: 1150,
+      accountStatus: 'active'
     });
 
     // Seed test fixtures that MUST be excluded from production leaderboards
@@ -158,6 +185,9 @@ describe('Authoritative Leaderboard System Suite', () => {
       await db.collection('users').doc('user_deleted_tombstone').delete();
       await db.collection('users').doc('user_blocked_sample').delete();
       await db.collection('users').doc('user_legacy_unflagged').delete();
+      await db.collection('users').doc('user_lvl1_ineligible').delete();
+      await db.collection('users').doc('user_lvl2_ineligible').delete();
+      await db.collection('users').doc('user_promo_test').delete();
       await db.collection('xpTransactions').doc('weekly_tx_alpha_1').delete();
       await db.collection('xpTransactions').doc('weekly_tx_beta_1').delete();
     } catch {
@@ -352,5 +382,172 @@ describe('Authoritative Leaderboard System Suite', () => {
     // Running cleanup again is idempotent (cleans 0 additional records)
     const secondResult = await cleanupLeaderboardStaleRecords();
     expect(secondResult.cleanedCount).toBe(0);
+  });
+
+  it('10. denies leaderboard access to Level 1 user with 403 LEADERBOARD_LOCKED', async () => {
+    const res = await request(app)
+      .get('/api/leaderboard')
+      .set('Authorization', 'Bearer level1_token');
+
+    expect(res.status).toBe(403);
+    expect(res.body.locked).toBe(true);
+    expect(res.body.code).toBe('LEADERBOARD_LOCKED');
+    expect(res.body.currentLevel).toBe(1);
+    expect(res.body.requiredLevel).toBe(3);
+    expect(res.body.requiredXpForLevel3).toBe(250);
+    expect(res.body.currentXp).toBe(50);
+    expect(res.body.xpNeeded).toBe(200);
+  });
+
+  it('11. denies leaderboard access to Level 2 user with 403 LEADERBOARD_LOCKED', async () => {
+    const res = await request(app)
+      .get('/api/leaderboard')
+      .set('Authorization', 'Bearer level2_token');
+
+    expect(res.status).toBe(403);
+    expect(res.body.locked).toBe(true);
+    expect(res.body.code).toBe('LEADERBOARD_LOCKED');
+    expect(res.body.currentLevel).toBe(2);
+    expect(res.body.requiredLevel).toBe(3);
+    expect(res.body.currentXp).toBe(180);
+    expect(res.body.xpNeeded).toBe(70); // 250 - 180 = 70
+  });
+
+  it('12. strictly excludes Level 1 and Level 2 users from leaderboard query results across all categories', async () => {
+    await invalidateLeaderboardCache();
+
+    // Check All-Time Global
+    const globalRes = await request(app)
+      .get('/api/leaderboard?type=global')
+      .set('Authorization', 'Bearer real_user_token_1');
+
+    expect(globalRes.status).toBe(200);
+    const globalUids = globalRes.body.map((u: any) => u.uid);
+    expect(globalUids).not.toContain('user_lvl1_ineligible');
+    expect(globalUids).not.toContain('user_lvl2_ineligible');
+
+    // Check Weekly Sprint
+    const weeklyRes = await request(app)
+      .get('/api/leaderboard?type=weekly')
+      .set('Authorization', 'Bearer real_user_token_1');
+
+    expect(weeklyRes.status).toBe(200);
+    const weeklyUids = weeklyRes.body.map((u: any) => u.uid);
+    expect(weeklyUids).not.toContain('user_lvl1_ineligible');
+    expect(weeklyUids).not.toContain('user_lvl2_ineligible');
+
+    // Check Daily
+    const dailyRes = await request(app)
+      .get('/api/leaderboard?type=daily')
+      .set('Authorization', 'Bearer real_user_token_1');
+
+    expect(dailyRes.status).toBe(200);
+    const dailyUids = dailyRes.body.map((u: any) => u.uid);
+    expect(dailyUids).not.toContain('user_lvl1_ineligible');
+    expect(dailyUids).not.toContain('user_lvl2_ineligible');
+
+    // Check Monthly
+    const monthlyRes = await request(app)
+      .get('/api/leaderboard?type=monthly')
+      .set('Authorization', 'Bearer real_user_token_1');
+
+    expect(monthlyRes.status).toBe(200);
+    const monthlyUids = monthlyRes.body.map((u: any) => u.uid);
+    expect(monthlyUids).not.toContain('user_lvl1_ineligible');
+    expect(monthlyUids).not.toContain('user_lvl2_ineligible');
+  });
+
+  it('13. user reaches Level 3 and automatically unlocks Rankings and appears in results', async () => {
+    // 1. Initially at Level 2 (200 XP) -> locked
+    await db.collection('users').doc('user_promo_test').set({
+      uid: 'user_promo_test',
+      displayName: 'Promoted Contender',
+      level: 2,
+      xp: 200,
+      totalXp: 200,
+      battleRating: 1350,
+      accountStatus: 'active'
+    });
+
+    await invalidateLeaderboardCache();
+
+    const lockedRes = await request(app)
+      .get('/api/leaderboard')
+      .set('Authorization', 'Bearer promo_token');
+
+    expect(lockedRes.status).toBe(403);
+    expect(lockedRes.body.locked).toBe(true);
+
+    // Verify other players do NOT see user_promo_test yet
+    const preCheck = await request(app)
+      .get('/api/leaderboard?type=global')
+      .set('Authorization', 'Bearer real_user_token_1');
+    const preUids = preCheck.body.map((u: any) => u.uid);
+    expect(preUids).not.toContain('user_promo_test');
+
+    // 2. User gains XP to reach 260 XP (Level 3 unlock threshold is 250 XP)
+    await db.collection('users').doc('user_promo_test').update({
+      xp: 260,
+      totalXp: 260,
+      level: 3,
+      leaderboardEligible: true
+    });
+
+    await invalidateLeaderboardCache();
+
+    // 3. User now accesses leaderboard directly -> 200 OK!
+    const unlockedRes = await request(app)
+      .get('/api/leaderboard')
+      .set('Authorization', 'Bearer promo_token');
+
+    expect(unlockedRes.status).toBe(200);
+    expect(Array.isArray(unlockedRes.body)).toBe(true);
+
+    // 4. Other players now see newly eligible Level 3 user in global results
+    const postCheck = await request(app)
+      .get('/api/leaderboard?type=global')
+      .set('Authorization', 'Bearer real_user_token_1');
+
+    const postUids = postCheck.body.map((u: any) => u.uid);
+    expect(postUids).toContain('user_promo_test');
+  });
+
+  it('14. supports limit query parameters (Top 25, Top 50, Top 200) without returning ineligible users', async () => {
+    await invalidateLeaderboardCache();
+
+    const res25 = await request(app)
+      .get('/api/leaderboard?limit=25')
+      .set('Authorization', 'Bearer real_user_token_1');
+    expect(res25.status).toBe(200);
+    expect(res25.body.length).toBeLessThanOrEqual(25);
+    res25.body.forEach((u: any) => {
+      expect(u.level).toBeGreaterThanOrEqual(3);
+    });
+
+    const res200 = await request(app)
+      .get('/api/leaderboard?limit=200')
+      .set('Authorization', 'Bearer real_user_token_1');
+    expect(res200.status).toBe(200);
+    expect(res200.body.length).toBeLessThanOrEqual(200);
+    res200.body.forEach((u: any) => {
+      expect(u.level).toBeGreaterThanOrEqual(3);
+    });
+  });
+
+  it('15. preserves all profile data, XP, coins, and levels without loss during updates and audits', async () => {
+    const alphaDoc = await db.collection('users').doc('real_user_alpha').get();
+    const data = alphaDoc.data();
+
+    expect(data.displayName).toBe('Alpha Prime');
+    expect(data.xp).toBe(950);
+    expect(data.totalXp).toBe(950);
+    expect(data.battleRating).toBe(1450);
+
+    const lvl1Doc = await db.collection('users').doc('user_lvl1_ineligible').get();
+    const lvl1Data = lvl1Doc.data();
+    // Excluded from leaderboards, but user account, XP, coins are completely intact
+    expect(lvl1Data.displayName).toBe('Level One Cadet');
+    expect(lvl1Data.xp).toBe(50);
+    expect(lvl1Data.totalXp).toBe(50);
   });
 });

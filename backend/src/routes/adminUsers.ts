@@ -3,6 +3,7 @@ import { db, auth } from '../config/firebase';
 import { adminAuth, AdminAuthenticatedRequest } from '../middleware/adminAuth';
 import logger from '../utils/logger';
 import { invalidateLeaderboardCache, cleanupLeaderboardStaleRecords } from '../services/leaderboardCleanup';
+import { calculateLevelFromXP } from '../utils/gamification';
 
 export const adminUsersRouter = Router();
 
@@ -171,9 +172,15 @@ adminUsersRouter.post('/:uid/block', adminAuth, async (req: AdminAuthenticatedRe
     }
 
     // Update Firestore user document
+    const targetData = userDoc.data() || {};
+    const targetXp = Number(targetData.totalXp ?? targetData.xp ?? 0);
+    const targetLevel = calculateLevelFromXP(targetXp);
+    const eligibleWhenUnblocked = targetLevel >= 3;
+
     await db.collection('users').doc(uid).update({
       accountStatus: blocked ? 'blocked' : 'active',
       ineligibleForLeaderboard: blocked ? true : false,
+      leaderboardEligible: blocked ? false : eligibleWhenUnblocked,
       updatedAt: new Date().toISOString()
     });
 

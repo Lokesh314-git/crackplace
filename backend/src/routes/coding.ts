@@ -8,6 +8,7 @@ import { calculatePlacementReadiness } from '../utils/readiness';
 import { XpTransactionService } from '../services/XpTransactionService';
 import { checkAndFulfillReferral } from '../services/referralService';
 import { PagePublishingService } from '../services/PagePublishingService';
+import { invalidateLeaderboardCache } from '../services/leaderboardCleanup';
 
 const router = Router();
 
@@ -195,6 +196,7 @@ JSON Schema:
     if (result.passed) {
       if (submit) {
         let leveledUp = false;
+        let oldLevel = 1;
         let newLevel = 1;
         let newlyUnlockedAchievements: any[] = [];
         const userDocRef = db.collection('users').doc(req.user.uid);
@@ -247,7 +249,7 @@ JSON Schema:
             const lastActiveDate = streakResult.lastActiveDate;
 
             const oldXp = Number(userData.xp ?? userData.totalXp ?? 0);
-            const oldLevel = calculateLevelFromXP(oldXp);
+            oldLevel = calculateLevelFromXP(oldXp);
 
             // 1. Authoritatively evaluate coding challenge base XP reward
             const baseEval = LevelCalculator.evaluateXpReward({
@@ -346,10 +348,12 @@ JSON Schema:
               runCount: currentRunCount + 1
             });
 
+            const isEligible = finalEval.levelAfter >= 3;
             transaction.update(userDocRef, {
               xp: finalEval.xpAfter,
               totalXp: finalEval.xpAfter,
               level: finalEval.levelAfter,
+              leaderboardEligible: isEligible,
               coins: finalCoins,
               dailyStreak,
               longestStreak,
@@ -372,6 +376,19 @@ JSON Schema:
               createdAt: new Date().toISOString(),
               read: false
             });
+          }
+
+          if (newLevel >= 3 && oldLevel < 3) {
+            const unlockNotifRef = db.collection('notifications').doc();
+            await unlockNotifRef.set({
+              userId: req.user.uid,
+              type: 'leaderboard_unlocked',
+              title: '🏆 Leaderboard Unlocked!',
+              message: '🏆 Leaderboard Unlocked! You are now eligible to compete with other players.',
+              createdAt: new Date().toISOString(),
+              read: false
+            });
+            await invalidateLeaderboardCache();
           }
 
           if (newlyUnlockedAchievements.length > 0) {

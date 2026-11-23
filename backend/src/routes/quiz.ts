@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { calculateLevelFromXP, LevelCalculator, syncMissionsState, processMissionProgress, checkAndUnlockAchievements, updateDailyStreak } from '../utils/gamification';
 import { checkAndFulfillReferral } from '../services/referralService';
 import { calculatePlacementReadiness } from '../utils/readiness';
+import { invalidateLeaderboardCache } from '../services/leaderboardCleanup';
 
 import { supabase, isSupabaseConfigured } from '../config/supabase';
 
@@ -402,6 +403,7 @@ router.post(['/:quizId/results', '/:quizId/submit'], optionalAuth, async (req: A
 
     const userDocRef = db.collection('users').doc(req.user.uid);
     let leveledUp = false;
+    let oldLevel = 1;
     let newLevel = 1;
     let newlyUnlockedAchievements: any[] = [];
     let updatedProfile: any = null;
@@ -464,7 +466,7 @@ router.post(['/:quizId/results', '/:quizId/submit'], optionalAuth, async (req: A
       const lastActiveDate = streakResult.lastActiveDate;
 
       const oldXp = Number(userData.xp ?? userData.totalXp ?? 0);
-      const oldLevel = calculateLevelFromXP(oldXp);
+      oldLevel = calculateLevelFromXP(oldXp);
 
       // Authoritative evaluation of XP reward
       const baseEval = LevelCalculator.evaluateXpReward({
@@ -562,10 +564,12 @@ router.post(['/:quizId/results', '/:quizId/submit'], optionalAuth, async (req: A
         userAnswers,
         submittedAt
       });
+      const isEligible = finalEval.levelAfter >= 3;
       transaction.update(userDocRef, {
         xp: finalEval.xpAfter,
         totalXp: finalEval.xpAfter,
         level: finalEval.levelAfter,
+        leaderboardEligible: isEligible,
         coins: finalCoins,
         dailyStreak,
         longestStreak,
@@ -583,6 +587,7 @@ router.post(['/:quizId/results', '/:quizId/submit'], optionalAuth, async (req: A
         xp: finalEval.xpAfter,
         totalXp: finalEval.xpAfter,
         level: finalEval.levelAfter,
+        leaderboardEligible: isEligible,
         coins: finalCoins,
         dailyStreak,
         longestStreak,
@@ -600,6 +605,19 @@ router.post(['/:quizId/results', '/:quizId/submit'], optionalAuth, async (req: A
         createdAt: new Date().toISOString(),
         read: false
       });
+    }
+
+    if (newLevel >= 3 && oldLevel < 3) {
+      const unlockNotifRef = db.collection('notifications').doc();
+      await unlockNotifRef.set({
+        userId: req.user.uid,
+        type: 'leaderboard_unlocked',
+        title: '🏆 Leaderboard Unlocked!',
+        message: '🏆 Leaderboard Unlocked! You are now eligible to compete with other players.',
+        createdAt: new Date().toISOString(),
+        read: false
+      });
+      await invalidateLeaderboardCache();
     }
 
     // Verify referral eligibility asynchronously

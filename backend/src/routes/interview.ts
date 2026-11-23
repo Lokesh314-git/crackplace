@@ -8,6 +8,7 @@ import { calculateLevelFromXP, calculateLevelProgress, LevelCalculator, syncMiss
 import { calculatePlacementReadiness } from '../utils/readiness';
 import { XpTransactionService } from '../services/XpTransactionService';
 import { checkAndFulfillReferral } from '../services/referralService';
+import { invalidateLeaderboardCache } from '../services/leaderboardCleanup';
 
 const router = Router();
 
@@ -167,6 +168,7 @@ JSON Schema:
         // Update User Level, XP, Coins and readiness index
         const userDocRef = db.collection('users').doc(req.user.uid);
         let leveledUp = false;
+        let oldLevel = 1;
         let newLevel = 1;
         let newlyUnlockedAchievements: any[] = [];
 
@@ -184,7 +186,7 @@ JSON Schema:
             const lastActiveDate = streakResult.lastActiveDate;
 
             const oldXp = Number(userData.xp ?? userData.totalXp ?? 0);
-            const oldLevel = calculateLevelFromXP(oldXp);
+            oldLevel = calculateLevelFromXP(oldXp);
 
             // 1. Authoritatively evaluate HR interview base XP reward
             const baseEval = LevelCalculator.evaluateXpReward({
@@ -276,10 +278,12 @@ JSON Schema:
             const interviewTxKey = `interview_${dialogueHash}_${req.user!.uid}`;
             transaction.set(db.collection('xpTransactions').doc(interviewTxKey), baseEval.transaction);
 
+            const isEligible = finalEval.levelAfter >= 3;
             transaction.update(userDocRef, {
               xp: finalEval.xpAfter,
               totalXp: finalEval.xpAfter,
               level: finalEval.levelAfter,
+              leaderboardEligible: isEligible,
               coins: finalCoins,
               dailyStreak,
               longestStreak,
@@ -302,6 +306,19 @@ JSON Schema:
               createdAt: new Date().toISOString(),
               read: false
             });
+          }
+
+          if (newLevel >= 3 && oldLevel < 3) {
+            const unlockNotifRef = db.collection('notifications').doc();
+            await unlockNotifRef.set({
+              userId: req.user.uid,
+              type: 'leaderboard_unlocked',
+              title: '🏆 Leaderboard Unlocked!',
+              message: '🏆 Leaderboard Unlocked! You are now eligible to compete with other players.',
+              createdAt: new Date().toISOString(),
+              read: false
+            });
+            await invalidateLeaderboardCache();
           }
 
           if (newlyUnlockedAchievements.length > 0) {

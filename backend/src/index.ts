@@ -28,7 +28,7 @@ import {
 import { XpTransactionService } from './services/XpTransactionService';
 import { COSMETICS_CATALOG, checkIsLegendaryPlayer } from './utils/cosmetics';
 import { resolveUserAvatar, getAvatarImageUrl, getUserAvatarUrl } from './utils/avatarResolver';
-import { isUserExcludedFromLeaderboard, cleanupLeaderboardStaleRecords } from './services/leaderboardCleanup';
+import { isUserExcludedFromLeaderboard, cleanupLeaderboardStaleRecords, invalidateLeaderboardCache } from './services/leaderboardCleanup';
 import quizRouter from './routes/quiz';
 import codingRouter from './routes/coding';
 import interviewRouter from './routes/interview';
@@ -324,6 +324,12 @@ app.post('/api/auth/verify', strictAuthLimiter, verifyToken, async (req: Authent
         const achTxKey = `achievement_verify_${Date.now()}_${req.user!.uid}`;
         transaction.set(db.collection('xpTransactions').doc(achTxKey), achEval.transaction);
       }
+
+      // Ensure leaderboard eligibility flag is synchronized with authoritative level
+      const isEligible = newLevel >= 3;
+      if (userData.leaderboardEligible !== isEligible) {
+        updatedFields.leaderboardEligible = isEligible;
+      }
       
       if (Object.keys(updatedFields).length > 0) {
         transaction.update(userDocRef, updatedFields);
@@ -341,6 +347,19 @@ app.post('/api/auth/verify', strictAuthLimiter, verifyToken, async (req: Authent
         createdAt: new Date().toISOString(),
         read: false
       });
+    }
+
+    if (newLevel >= 3 && oldLevel < 3) {
+      const unlockNotifRef = db.collection('notifications').doc();
+      await unlockNotifRef.set({
+        userId: req.user.uid,
+        type: 'leaderboard_unlocked',
+        title: '🏆 Leaderboard Unlocked!',
+        message: '🏆 Leaderboard Unlocked! You are now eligible to compete with other players.',
+        createdAt: new Date().toISOString(),
+        read: false
+      });
+      await invalidateLeaderboardCache();
     }
 
     if (loginRewardClaimed) {
@@ -368,44 +387,61 @@ app.post('/api/auth/verify', strictAuthLimiter, verifyToken, async (req: Authent
 });
 
 // ----------------------------------------------------
-// Server-Authoritative Leaderboard (Global & Weekly Sprint)
+// Server-Authoritative Leaderboard (Global, Weekly, Daily, Monthly, College, Department)
 // ----------------------------------------------------
 app.get('/api/leaderboard', verifyToken, async (req: AuthenticatedRequest, res) => {
-  // FIX 2: Authoritatively protect leaderboard data - Level 3+ required
+  // Authoritatively protect leaderboard data - Level 3+ required
   const callerId = req.user?.uid;
-  if (callerId) {
-    try {
-      const callerDoc = await db.collection('users').doc(callerId).get();
-      const callerData = callerDoc && callerDoc.exists ? callerDoc.data() || {} : {};
-      const callerXp = Number(callerData.totalXp ?? callerData.xp ?? 0);
-      const callerLevel = calculateLevelFromXP(callerXp);
-      const isCallerAdmin = req.user?.role === 'admin' || callerData.role === 'admin';
-
-      if (callerLevel < 3 && !isCallerAdmin) {
-        const level3Xp = LevelCalculator.getXpRequiredForLevel(2); // 250 XP
-        const xpNeeded = Math.max(0, level3Xp - callerXp);
-        const progressPercentage = Math.min(100, Math.round((callerXp / level3Xp) * 100));
-
-        return res.status(403).json({
-          locked: true,
-          code: 'LEADERBOARD_LOCKED',
-          message: 'Reach Level 3 to unlock competitive rankings.',
-          currentLevel: callerLevel,
-          requiredLevel: 3,
-          currentXp: callerXp,
-          requiredXpForLevel3: level3Xp,
-          xpNeeded,
-          progressPercentage
-        });
-      }
-    } catch (checkErr) {
-      logger.warn('Failed to verify caller level for leaderboard access', { error: String(checkErr) });
-    }
+  if (!callerId) {
+    return res.status(401).json({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
   }
 
-  const rankingType = req.query.type === 'weekly' ? 'weekly' : 'global';
-  const limitCount = Math.min(100, Math.max(1, Number(req.query.limit) || 100));
-  const cacheKey = `leaderboard:${rankingType}:${limitCount}`;
+  let callerLevel = 1;
+  let callerXp = 0;
+  let callerCollege: string | null = null;
+  let callerDept: string | null = null;
+  let isCallerAdmin = req.user?.role === 'admin';
+
+  try {
+    const callerDoc = await db.collection('users').doc(callerId).get();
+    if (callerDoc && callerDoc.exists) {
+      const callerData = callerDoc.data() || {};
+      callerXp = Number(callerData.totalXp ?? callerData.xp ?? 0);
+      callerLevel = calculateLevelFromXP(callerXp);
+      callerCollege = callerData.college || null;
+      callerDept = callerData.department || null;
+      if (callerData.role === 'admin') {
+        isCallerAdmin = true;
+      }
+    }
+  } catch (checkErr) {
+    logger.warn('Failed to verify caller level for leaderboard access', { error: String(checkErr) });
+  }
+
+  if (callerLevel < 3 && !isCallerAdmin) {
+    const level3Xp = LevelCalculator.getXpRequiredForLevel(2); // 250 XP
+    const xpNeeded = Math.max(0, level3Xp - callerXp);
+    const progressPercentage = Math.min(100, Math.round((callerXp / level3Xp) * 100));
+
+    return res.status(403).json({
+      locked: true,
+      code: 'LEADERBOARD_LOCKED',
+      message: 'Reach Level 3 to unlock competitive rankings.',
+      currentLevel: callerLevel,
+      requiredLevel: 3,
+      currentXp: callerXp,
+      requiredXpForLevel3: level3Xp,
+      xpNeeded,
+      progressPercentage
+    });
+  }
+
+  const rankingType = String(req.query.type || 'global').toLowerCase();
+  const limitCount = Math.min(200, Math.max(1, Number(req.query.limit) || 100));
+  const filterCollege = req.query.college ? String(req.query.college).trim() : (rankingType === 'college' ? callerCollege : null);
+  const filterDept = req.query.department ? String(req.query.department).trim() : (rankingType === 'department' ? callerDept : null);
+
+  const cacheKey = `leaderboard:${rankingType}:${limitCount}${filterCollege ? `:${filterCollege}` : ''}${filterDept ? `:${filterDept}` : ''}`;
 
   try {
     const cached = await redisClient.get(cacheKey);
@@ -421,18 +457,23 @@ app.get('/api/leaderboard', verifyToken, async (req: AuthenticatedRequest, res) 
     const userMap = new Map<string, any>();
 
     snapshot.forEach((doc: any) => {
-      const data = doc.data();
+      const data = doc.data() || {};
       const uid = doc.id;
 
-      // Authoritatively exclude soft-deleted, blocked, test fixtures, and bots
+      // Authoritatively exclude soft-deleted, blocked, test fixtures, bots, and users below Level 3
       if (isUserExcludedFromLeaderboard(data, uid)) {
         return;
       }
 
       const rawXp = Number(data.xp ?? data.totalXp ?? 0);
       const computedLevel = calculateLevelFromXP(rawXp);
-      const battleRating = Number(data.battleRating ?? data.eloRating ?? GAME_CONFIG.elo.startingRating ?? 1000);
 
+      // Defense-in-depth: Never allow Level 1 or Level 2 users to appear in rankings
+      if (computedLevel < 3) {
+        return;
+      }
+
+      const battleRating = Number(data.battleRating ?? data.eloRating ?? GAME_CONFIG.elo.startingRating ?? 1000);
       const resolvedAvatar = resolveUserAvatar(data);
 
       userMap.set(uid, {
@@ -445,25 +486,40 @@ app.get('/api/leaderboard', verifyToken, async (req: AuthenticatedRequest, res) 
         xp: rawXp,
         totalXp: rawXp,
         weeklyXp: 0,
+        dailyXp: 0,
+        monthlyXp: 0,
+        college: data.college || null,
+        department: data.department || null,
         equippedRing: data.equippedRing || null,
         equippedFrame: data.equippedFrame || null,
         equippedTitle: data.equippedTitle || null,
-        college: data.college || null,
+        leaderboardEligible: true,
         isLegendaryPlayer: checkIsLegendaryPlayer({ ...data, equippedAvatar: data.equippedAvatar || resolvedAvatar.id })
       });
     });
 
-    // If Weekly Sprint ranking is requested, compute weekly earned XP from transactions
-    if (rankingType === 'weekly' && userMap.size > 0) {
+    // Time-scoped XP calculations from xpTransactions
+    if ((rankingType === 'weekly' || rankingType === 'daily' || rankingType === 'monthly') && userMap.size > 0) {
       const now = new Date();
-      const day = now.getUTCDay(); // 0 is Sunday, 1 is Monday
-      const diff = now.getUTCDate() - day + (day === 0 ? -6 : 1);
-      const startOfWeek = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), diff, 0, 0, 0, 0));
-      const startOfWeekIso = startOfWeek.toISOString();
+      let startTimeIso: string;
+
+      if (rankingType === 'daily') {
+        const startOfDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
+        startTimeIso = startOfDay.toISOString();
+      } else if (rankingType === 'monthly') {
+        const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
+        startTimeIso = startOfMonth.toISOString();
+      } else {
+        // Weekly (Monday 00:00:00 UTC)
+        const day = now.getUTCDay(); // 0 is Sunday, 1 is Monday
+        const diff = now.getUTCDate() - day + (day === 0 ? -6 : 1);
+        const startOfWeek = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), diff, 0, 0, 0, 0));
+        startTimeIso = startOfWeek.toISOString();
+      }
 
       try {
         const txSnap = await db.collection('xpTransactions')
-          .where('createdAt', '>=', startOfWeekIso)
+          .where('createdAt', '>=', startTimeIso)
           .get();
 
         if (txSnap && !txSnap.empty) {
@@ -471,19 +527,51 @@ app.get('/api/leaderboard', verifyToken, async (req: AuthenticatedRequest, res) 
             const txData = txDoc.data();
             const u = userMap.get(txData.userId);
             if (u) {
-              u.weeklyXp = (u.weeklyXp || 0) + Number(txData.xpEarned || 0);
+              const earned = Number(txData.xpEarned || 0);
+              if (rankingType === 'daily') {
+                u.dailyXp = (u.dailyXp || 0) + earned;
+              } else if (rankingType === 'monthly') {
+                u.monthlyXp = (u.monthlyXp || 0) + earned;
+              } else {
+                u.weeklyXp = (u.weeklyXp || 0) + earned;
+              }
             }
           });
         }
       } catch (txErr) {
-        logger.warn('Weekly XP transactions query failed, falling back to profile XP sort', { error: String(txErr) });
+        logger.warn('Time-scoped XP transactions query failed, falling back to profile XP sort', { error: String(txErr) });
       }
     }
 
-    const rankList = Array.from(userMap.values());
+    let rankList = Array.from(userMap.values());
+
+    // Apply category filters if requested
+    if (filterCollege) {
+      const targetCollege = filterCollege.toLowerCase();
+      rankList = rankList.filter(u => u.college && u.college.toLowerCase().includes(targetCollege));
+    }
+
+    if (filterDept) {
+      const targetDept = filterDept.toLowerCase();
+      rankList = rankList.filter(u => u.department && u.department.toLowerCase().includes(targetDept));
+    }
 
     // Deterministic sorting rules
-    if (rankingType === 'weekly') {
+    if (rankingType === 'daily') {
+      rankList.sort((a, b) => {
+        if (b.dailyXp !== a.dailyXp) return (b.dailyXp || 0) - (a.dailyXp || 0);
+        if (b.battleRating !== a.battleRating) return b.battleRating - a.battleRating;
+        if (b.xp !== a.xp) return b.xp - a.xp;
+        return a.uid.localeCompare(b.uid);
+      });
+    } else if (rankingType === 'monthly') {
+      rankList.sort((a, b) => {
+        if (b.monthlyXp !== a.monthlyXp) return (b.monthlyXp || 0) - (a.monthlyXp || 0);
+        if (b.battleRating !== a.battleRating) return b.battleRating - a.battleRating;
+        if (b.xp !== a.xp) return b.xp - a.xp;
+        return a.uid.localeCompare(b.uid);
+      });
+    } else if (rankingType === 'weekly') {
       rankList.sort((a, b) => {
         if (b.weeklyXp !== a.weeklyXp) return (b.weeklyXp || 0) - (a.weeklyXp || 0);
         if (b.battleRating !== a.battleRating) return b.battleRating - a.battleRating;

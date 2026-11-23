@@ -1,10 +1,12 @@
 import { db } from '../config/firebase';
 import { redisClient } from '../config/redis';
 import { logger } from '../utils/logger';
+import { calculateLevelFromXP } from '../utils/gamification';
 
 /**
  * Authoritative check to determine if a user should be excluded from all public leaderboards.
- * Excludes soft-deleted accounts, blocked/banned accounts, test fixtures, and bots.
+ * Excludes soft-deleted accounts, blocked/banned accounts, test fixtures, bots,
+ * and any user who has not reached Level 3+ (Level 1 and Level 2 users are locked out and hidden).
  */
 export function isUserExcludedFromLeaderboard(data: any, uid: string): boolean {
   if (!data) return true;
@@ -20,7 +22,7 @@ export function isUserExcludedFromLeaderboard(data: any, uid: string): boolean {
   }
 
   // 3. Explicit leaderboard ineligibility flag
-  if (data.ineligibleForLeaderboard === true) {
+  if (data.ineligibleForLeaderboard === true || data.leaderboardEligible === false) {
     return true;
   }
 
@@ -45,22 +47,52 @@ export function isUserExcludedFromLeaderboard(data: any, uid: string): boolean {
     return true;
   }
 
+  // 6. Level requirement: Players must reach Level 3+ to participate in any leaderboard
+  // Eligibility is strictly derived from actual accumulated XP (trusted ledger)
+  const rawXp = Number(data.totalXp ?? data.xp ?? 0);
+  const actualLevel = calculateLevelFromXP(rawXp);
+  if (actualLevel < 3) {
+    return true;
+  }
+
   return false;
 }
 
 /**
- * Invalidate all Redis leaderboard cache entries (global, weekly, and custom limits).
+ * Invalidate all Redis leaderboard cache entries (global, weekly, daily, monthly, and custom limits).
  */
 export async function invalidateLeaderboardCache(): Promise<number> {
   let clearedCount = 0;
   try {
     const knownKeys = [
+      'leaderboard:global:200',
       'leaderboard:global:100',
-      'leaderboard:weekly:100',
       'leaderboard:global:50',
-      'leaderboard:weekly:50',
       'leaderboard:global:25',
+      'leaderboard:weekly:200',
+      'leaderboard:weekly:100',
+      'leaderboard:weekly:50',
       'leaderboard:weekly:25',
+      'leaderboard:daily:200',
+      'leaderboard:daily:100',
+      'leaderboard:daily:50',
+      'leaderboard:daily:25',
+      'leaderboard:monthly:200',
+      'leaderboard:monthly:100',
+      'leaderboard:monthly:50',
+      'leaderboard:monthly:25',
+      'leaderboard:college:200',
+      'leaderboard:college:100',
+      'leaderboard:college:50',
+      'leaderboard:college:25',
+      'leaderboard:department:200',
+      'leaderboard:department:100',
+      'leaderboard:department:50',
+      'leaderboard:department:25',
+      'leaderboard:friends:200',
+      'leaderboard:friends:100',
+      'leaderboard:friends:50',
+      'leaderboard:friends:25',
       'leaderboard:top50',
       'leaderboard:weekly:top50'
     ];
@@ -92,6 +124,7 @@ export async function invalidateLeaderboardCache(): Promise<number> {
 /**
  * Idempotent cleanup job that scans Firestore for legacy deleted/scrubbed user records
  * and ensures they have tombstone markers (ineligibleForLeaderboard: true, isDeleted: true),
+ * then synchronizes leaderboardEligible flag for all accounts according to Level 3 rules,
  * then invalidates the leaderboard cache so no stale rankings are served.
  */
 export async function cleanupLeaderboardStaleRecords(): Promise<{
@@ -137,9 +170,32 @@ export async function cleanupLeaderboardStaleRecords(): Promise<{
             accountStatus: 'deleted',
             isDeleted: true,
             ineligibleForLeaderboard: true,
+            leaderboardEligible: false,
             deletedAt: data.deletedAt || timestamp,
             displayName: 'Deleted User',
             photoURL: null,
+            updatedAt: timestamp
+          });
+          batchOperations++;
+          cleanedCount++;
+        }
+      } else {
+        // Active account: check if leaderboardEligible is out of sync with actual Level 3+ status
+        const rawXp = Number(data.totalXp ?? data.xp ?? 0);
+        const actualLevel = calculateLevelFromXP(rawXp);
+        const isExcluded =
+          data.accountStatus === 'blocked' ||
+          data.ineligibleForLeaderboard === true ||
+          data.isTest ||
+          data.isDemo;
+
+        const expectedEligible = actualLevel >= 3 && !isExcluded;
+
+        // If leaderboardEligible is explicitly out of sync
+        if (data.leaderboardEligible !== expectedEligible) {
+          const docRef = db.collection('users').doc(uid);
+          batch.update(docRef, {
+            leaderboardEligible: expectedEligible,
             updatedAt: timestamp
           });
           batchOperations++;
@@ -150,9 +206,9 @@ export async function cleanupLeaderboardStaleRecords(): Promise<{
 
     if (batchOperations > 0) {
       await batch.commit();
-      logger.info(`[LEADERBOARD_CLEANUP] Successfully updated ${cleanedCount} stale user documents with exclusion flags.`);
+      logger.info(`[LEADERBOARD_CLEANUP] Successfully updated ${cleanedCount} user documents with eligibility flags.`);
     } else {
-      logger.info('[LEADERBOARD_CLEANUP] Audit complete. No legacy records required updates.');
+      logger.info('[LEADERBOARD_CLEANUP] Audit complete. All records have accurate eligibility flags.');
     }
 
     // Always invalidate cache after cleanup to purge any lingering rankings

@@ -7,6 +7,7 @@ import { calculateLevelFromXP, calculateLevelProgress, LevelCalculator, syncMiss
 import { calculatePlacementReadiness } from '../utils/readiness';
 import { XpTransactionService } from '../services/XpTransactionService';
 import { PagePublishingService } from '../services/PagePublishingService';
+import { invalidateLeaderboardCache } from '../services/leaderboardCleanup';
 
 const router = Router();
 
@@ -337,6 +338,7 @@ router.post('/notes/:noteId/complete', verifyToken, async (req: AuthenticatedReq
     const userDocRef = db.collection('users').doc(req.user.uid);
 
     let leveledUp = false;
+    let oldLevel = 1;
     let newLevel = 1;
     let newlyUnlockedAchievements: any[] = [];
     const rewards = { xp: 10, coins: 5 };
@@ -369,7 +371,7 @@ router.post('/notes/:noteId/complete', verifyToken, async (req: AuthenticatedReq
       const lastActiveDate = streakResult.lastActiveDate;
 
       const oldXp = Number(userData.xp ?? userData.totalXp ?? 0);
-      const oldLevel = calculateLevelFromXP(oldXp);
+      oldLevel = calculateLevelFromXP(oldXp);
 
       // 1. Authoritatively evaluate study notes base XP reward
       const baseEval = LevelCalculator.evaluateXpReward({
@@ -450,11 +452,13 @@ router.post('/notes/:noteId/complete', verifyToken, async (req: AuthenticatedReq
       const studyTxKey = `study_notes_${noteId}_${req.user!.uid}`;
       transaction.set(db.collection('xpTransactions').doc(studyTxKey), baseEval.transaction);
 
+      const isEligible = finalEval.levelAfter >= 3;
       transaction.update(noteRef, { completed: true });
       transaction.update(userDocRef, {
         xp: finalEval.xpAfter,
         totalXp: finalEval.xpAfter,
         level: finalEval.levelAfter,
+        leaderboardEligible: isEligible,
         coins: finalCoins,
         dailyStreak,
         longestStreak,
@@ -475,6 +479,19 @@ router.post('/notes/:noteId/complete', verifyToken, async (req: AuthenticatedReq
         createdAt: new Date().toISOString(),
         read: false
       });
+    }
+
+    if (newLevel >= 3 && oldLevel < 3) {
+      const unlockNotifRef = db.collection('notifications').doc();
+      await unlockNotifRef.set({
+        userId: req.user.uid,
+        type: 'leaderboard_unlocked',
+        title: '🏆 Leaderboard Unlocked!',
+        message: '🏆 Leaderboard Unlocked! You are now eligible to compete with other players.',
+        createdAt: new Date().toISOString(),
+        read: false
+      });
+      await invalidateLeaderboardCache();
     }
 
     if (newlyUnlockedAchievements.length > 0) {

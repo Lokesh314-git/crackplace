@@ -56,13 +56,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               const computedLevel = calculateLevelFromXP(xpVal);
               const resolvedAvatar = resolveUserAvatar(rawData);
 
+              const isEligible = computedLevel >= 3;
+
               const newProfile: UserProfile = {
                 ...rawData,
                 photoURL: resolvedAvatar.url,
                 equippedAvatar: rawData.equippedAvatar || resolvedAvatar.id,
                 unlockedAvatars: (rawData.unlockedAvatars && rawData.unlockedAvatars.length > 0) ? rawData.unlockedAvatars : [resolvedAvatar.id],
                 xp: xpVal,
-                level: computedLevel
+                level: computedLevel,
+                leaderboardEligible: isEligible
               };
 
               if (prevProfile && newProfile) {
@@ -87,6 +90,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                       earnedXp: newXp - prevXp
                     }
                   }));
+
+                  if (newLvl >= 3 && prevLevel < 3) {
+                    window.dispatchEvent(new CustomEvent('leaderboard-unlocked', {
+                      detail: {
+                        message: '🏆 Leaderboard Unlocked! You are now eligible to compete with other players.',
+                        level: newLvl
+                      }
+                    }));
+                  }
                 }
               }
               set({ userProfile: newProfile, loading: false });
@@ -188,6 +200,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         xp: 0,
         coins: 100,
         level: 1,
+        leaderboardEligible: false,
         battleRating: 1000,
         dailyStreak: 0,
         lastActiveDate: new Date().toISOString(),
@@ -261,6 +274,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             xp: 0,
             coins: 100,
             level: 1,
+            leaderboardEligible: false,
             battleRating: 1000,
             dailyStreak: 0,
             lastActiveDate: new Date().toISOString(),
@@ -300,7 +314,22 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (!authUser || !userProfile) throw new Error('Not authenticated');
     
     try {
-      const updatedProfile = { ...userProfile, ...updates };
+      // Disallow client tampering with level and leaderboardEligible
+      const sanitizedUpdates = { ...updates };
+      delete (sanitizedUpdates as any).level;
+      delete (sanitizedUpdates as any).leaderboardEligible;
+
+      const xpVal = Number(userProfile.xp ?? (userProfile as any).totalXp ?? 0);
+      const trustedLevel = calculateLevelFromXP(xpVal);
+      const isEligible = trustedLevel >= 3;
+
+      const updatedProfile = {
+        ...userProfile,
+        ...sanitizedUpdates,
+        level: trustedLevel,
+        leaderboardEligible: isEligible
+      };
+
       await setDoc(doc(db, 'users', authUser.uid), updatedProfile, { merge: true });
       set({ userProfile: updatedProfile });
     } catch (error) {

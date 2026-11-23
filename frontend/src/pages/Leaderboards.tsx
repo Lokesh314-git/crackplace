@@ -58,11 +58,12 @@ export const Leaderboards: React.FC = () => {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<'global' | 'weekly'>('global');
+  const [tab, setTab] = useState<'global' | 'weekly' | 'daily' | 'monthly' | 'college'>('global');
 
   const [selectedUser, setSelectedUser] = useState<LeaderboardUser | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [unlockedBanner, setUnlockedBanner] = useState<string | null>(null);
 
   // Season countdown state
   const [seasonInfo, setSeasonInfo] = useState<SeasonInfo | null>(null);
@@ -100,7 +101,7 @@ export const Leaderboards: React.FC = () => {
     }
   };
 
-  const fetchLeaderboard = useCallback(async (selectedTab: 'global' | 'weekly') => {
+  const fetchLeaderboard = useCallback(async (selectedTab: 'global' | 'weekly' | 'daily' | 'monthly' | 'college') => {
     setLoading(true);
     setError(null);
 
@@ -117,7 +118,7 @@ export const Leaderboards: React.FC = () => {
         if (data.locked || data.code === 'LEADERBOARD_LOCKED') {
           setLockDetails({
             locked: true,
-            message: data.message || 'Reach Level 3 to unlock competitive rankings.',
+            message: data.message || 'Reach Level 3 to compete with other players and appear in the global rankings.',
             currentLevel: data.currentLevel || 1,
             requiredLevel: data.requiredLevel || 3,
             currentXp: data.currentXp || 0,
@@ -208,13 +209,28 @@ export const Leaderboards: React.FC = () => {
       fetchLeaderboard(tab);
     };
 
+    const handleLevelUp = (e: any) => {
+      const detail = e.detail;
+      if (detail?.levelAfter >= 3 && (detail?.levelBefore === undefined || detail?.levelBefore < 3)) {
+        setUnlockedBanner('🏆 Leaderboard Unlocked! You are now eligible to compete with other players.');
+      }
+      fetchLeaderboard(tab);
+    };
+
+    const handleLeaderboardUnlocked = (e: any) => {
+      setUnlockedBanner(e.detail?.message || '🏆 Leaderboard Unlocked! You are now eligible to compete with other players.');
+      fetchLeaderboard(tab);
+    };
+
     window.addEventListener('xp-earned', handleRefresh);
-    window.addEventListener('level-up', handleRefresh);
+    window.addEventListener('level-up', handleLevelUp);
+    window.addEventListener('leaderboard-unlocked', handleLeaderboardUnlocked);
     window.addEventListener('battle-completed', handleRefresh);
 
     return () => {
       window.removeEventListener('xp-earned', handleRefresh);
-      window.removeEventListener('level-up', handleRefresh);
+      window.removeEventListener('level-up', handleLevelUp);
+      window.removeEventListener('leaderboard-unlocked', handleLeaderboardUnlocked);
       window.removeEventListener('battle-completed', handleRefresh);
     };
   }, [tab, fetchLeaderboard]);
@@ -240,19 +256,38 @@ export const Leaderboards: React.FC = () => {
   const currentUserRankIndex = userProfile ? ranks.findIndex(r => r.uid === userProfile.uid) : -1;
   const currentUserRankDisplay = currentUserRankIndex >= 0 ? `#${currentUserRankIndex + 1}` : 'Unranked';
 
+  const userActualXp = Number(userProfile?.xp ?? (userProfile as any)?.totalXp ?? 0);
+  const userActualLevel = calculateLevelFromXP(userActualXp);
+
   const isUserLocked = Boolean(
     lockDetails?.locked ||
-    (userProfile && (userProfile.level || 1) < 3 && userProfile.role !== 'admin')
+    (userProfile && userActualLevel < 3 && userProfile.role !== 'admin')
   );
 
-  const displayCurrentLevel = lockDetails?.currentLevel ?? userProfile?.level ?? 1;
-  const displayCurrentXp = lockDetails?.currentXp ?? userProfile?.xp ?? 0;
+  const displayCurrentLevel = lockDetails?.currentLevel ?? userActualLevel;
+  const displayCurrentXp = lockDetails?.currentXp ?? userActualXp;
   const displayTargetXp = lockDetails?.requiredXpForLevel3 ?? 250;
   const displayXpNeeded = lockDetails?.xpNeeded ?? Math.max(0, displayTargetXp - displayCurrentXp);
   const displayProgressPct = lockDetails?.progressPercentage ?? Math.min(100, Math.round((displayCurrentXp / displayTargetXp) * 100));
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto pb-16 animate-fade-in">
+      {/* Level 3 Automatic Unlock Notification Banner */}
+      {unlockedBanner && (
+        <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/30 text-green-400 text-xs sm:text-sm font-semibold flex items-center justify-between shadow-xs animate-fade-in">
+          <div className="flex items-center gap-2.5">
+            <FaTrophy className="w-4 h-4 shrink-0 text-yellow-400" />
+            <span>{unlockedBanner}</span>
+          </div>
+          <button
+            onClick={() => setUnlockedBanner(null)}
+            className="text-green-300 hover:text-white px-2 py-0.5 text-xs rounded transition-colors cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Header banner */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b border-border-dark">
         <div>
@@ -269,18 +304,20 @@ export const Leaderboards: React.FC = () => {
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-text-primary tracking-tight mt-1">Global Rankings</h1>
           <p className="text-text-secondary text-sm mt-0.5">
-            {tab === 'global' 
-              ? 'Top performing placement candidates ranked by competitive Elo and total XP.' 
-              : 'Weekly sprint contenders ranked by practice XP earned since Monday.'}
+            {tab === 'global' && 'Top performing placement candidates ranked by competitive Elo and total XP.'}
+            {tab === 'weekly' && 'Weekly sprint contenders ranked by practice XP earned since Monday.'}
+            {tab === 'daily' && "Today's top performers ranked by practice XP earned today."}
+            {tab === 'monthly' && 'Monthly leaderboard leaders ranked by practice XP earned this month.'}
+            {tab === 'college' && `Top contenders from ${userProfile?.college || 'your college'} ranked by competitive Elo.`}
           </p>
         </div>
 
         {/* Tab & Refresh selector */}
-        <div className="flex items-center gap-2">
-          <div className="flex bg-surface-dark border border-border-dark p-1 rounded-xl shadow-xs">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex bg-surface-dark border border-border-dark p-1 rounded-xl shadow-xs flex-wrap">
             <button
               onClick={() => setTab('global')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 tab === 'global' 
                   ? 'bg-brand-600 text-white shadow-xs' 
                   : 'text-text-muted hover:text-text-primary'
@@ -290,7 +327,7 @@ export const Leaderboards: React.FC = () => {
             </button>
             <button
               onClick={() => setTab('weekly')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 tab === 'weekly' 
                   ? 'bg-brand-600 text-white shadow-xs' 
                   : 'text-text-muted hover:text-text-primary'
@@ -298,6 +335,38 @@ export const Leaderboards: React.FC = () => {
             >
               Weekly Sprint
             </button>
+            <button
+              onClick={() => setTab('daily')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                tab === 'daily' 
+                  ? 'bg-brand-600 text-white shadow-xs' 
+                  : 'text-text-muted hover:text-text-primary'
+              }`}
+            >
+              Daily
+            </button>
+            <button
+              onClick={() => setTab('monthly')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                tab === 'monthly' 
+                  ? 'bg-brand-600 text-white shadow-xs' 
+                  : 'text-text-muted hover:text-text-primary'
+              }`}
+            >
+              Monthly
+            </button>
+            {userProfile?.college && (
+              <button
+                onClick={() => setTab('college')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  tab === 'college' 
+                    ? 'bg-brand-600 text-white shadow-xs' 
+                    : 'text-text-muted hover:text-text-primary'
+                }`}
+              >
+                College
+              </button>
+            )}
           </div>
 
           <button
@@ -342,40 +411,53 @@ export const Leaderboards: React.FC = () => {
           </div>
 
           <div className="space-y-2">
-            <h2 className="text-xl sm:text-2xl font-bold text-text-primary tracking-tight">Leaderboard Locked</h2>
+            <h2 className="text-xl sm:text-2xl font-bold text-text-primary tracking-tight">Leaderboard Locked!</h2>
             <p className="text-sm text-text-secondary max-w-md mx-auto">
-              Reach <span className="font-semibold text-brand-400">Level 3</span> to unlock competitive rankings.
+              Reach <span className="font-semibold text-brand-400">Level 3</span> to compete with other players and appear in the global rankings.
             </p>
           </div>
 
-          <div className="p-4 rounded-xl bg-surface-elevated/60 border border-border-dark space-y-3 text-left">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-text-muted font-medium">Progression to Unlocking</span>
-              <span className="font-semibold text-text-primary">
-                Level {displayCurrentLevel} / 3
-              </span>
+          <div className="p-5 rounded-xl bg-surface-elevated/60 border border-border-dark space-y-3 text-left">
+            <div className="grid grid-cols-2 gap-2 text-xs pb-2 border-b border-border-dark">
+              <div>
+                <span className="text-text-muted font-medium">Current Level: </span>
+                <span className="font-bold text-text-primary">{displayCurrentLevel}</span>
+              </div>
+              <div className="text-right">
+                <span className="text-text-muted font-medium">Next Unlock: </span>
+                <span className="font-bold text-brand-400">Level 3</span>
+              </div>
             </div>
 
-            <div className="w-full bg-surface-dark h-2.5 rounded-full overflow-hidden border border-border-dark">
-              <div
-                className="bg-brand-500 h-full rounded-full transition-all duration-500"
-                style={{ width: `${Math.min(100, Math.max(0, displayProgressPct))}%` }}
-              />
-            </div>
+            <div className="space-y-1.5 pt-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-text-muted font-medium">Progress</span>
+                <span className="font-mono font-semibold text-text-primary">
+                  {displayCurrentXp} / {displayTargetXp} XP
+                </span>
+              </div>
 
-            <div className="flex items-center justify-between text-[11px] text-text-muted">
-              <span>{displayCurrentXp} XP earned</span>
-              <span className="text-brand-400 font-semibold">{displayXpNeeded} XP needed to reach Level 3</span>
+              <div className="w-full bg-surface-dark h-3 rounded-full overflow-hidden border border-border-dark">
+                <div
+                  className="bg-brand-500 h-full rounded-full transition-all duration-500 shadow-xs"
+                  style={{ width: `${Math.min(100, Math.max(0, displayProgressPct))}%` }}
+                />
+              </div>
+
+              <div className="flex items-center justify-between text-[11px] text-text-muted pt-1">
+                <span>{displayProgressPct}% Completed</span>
+                <span className="text-brand-400 font-semibold">{displayXpNeeded} XP remaining to unlock</span>
+              </div>
             </div>
           </div>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
             <Link
               to="/practice"
-              className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold text-xs sm:text-sm transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold text-xs sm:text-sm transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
             >
               <FaGraduationCap className="w-4 h-4" />
-              <span>Continue Practicing</span>
+              <span>Go to Practice</span>
             </Link>
             <Link
               to="/battle"

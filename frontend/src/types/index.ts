@@ -46,6 +46,8 @@ export interface UserProfile {
   mysteryBoxes?: number;
   createdAt: any;
   referredBy?: string;
+  leaderboardEligible?: boolean;
+  ineligibleForLeaderboard?: boolean;
 
   // Cosmetics System
   equippedAvatar?: string | null;

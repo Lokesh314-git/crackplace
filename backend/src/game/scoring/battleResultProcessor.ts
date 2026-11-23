@@ -4,6 +4,7 @@ import { LevelCalculator } from './levelCalculator';
 import { GAME_CONFIG } from '../config/gameConfig';
 import { updateDailyStreak } from '../../utils/gamification';
 import { checkAndFulfillReferral } from '../../services/referralService';
+import { invalidateLeaderboardCache } from '../../services/leaderboardCleanup';
 
 // In-memory idempotency cache for fast retrieval and local dev fallback
 const completedBattlesCache = new Map<string, BattleResultPackage>();
@@ -131,6 +132,29 @@ export class BattleResultProcessor {
       await batch.commit();
       console.log(`[BattleResultProcessor] Successfully committed Firestore rewards transaction for battle ${resultPackage.battleId}`);
 
+      // Check if either player unlocked Level 3
+      const checkLevel3Unlock = async (reward: PlayerRewardResult) => {
+        if (reward.xp.levelAfter >= 3 && reward.xp.levelBefore < 3) {
+          try {
+            const unlockNotifRef = db.collection('notifications').doc();
+            await unlockNotifRef.set({
+              userId: reward.userId,
+              type: 'leaderboard_unlocked',
+              title: '🏆 Leaderboard Unlocked!',
+              message: '🏆 Leaderboard Unlocked! You are now eligible to compete with other players.',
+              createdAt: new Date().toISOString(),
+              read: false
+            });
+            await invalidateLeaderboardCache();
+          } catch (notifErr) {
+            console.warn('[BattleResultProcessor] Failed to send unlock notification:', notifErr);
+          }
+        }
+      };
+
+      await checkLevel3Unlock(resultPackage.playerA);
+      await checkLevel3Unlock(resultPackage.playerB);
+
       // Verify referral eligibility for both players asynchronously
       checkAndFulfillReferral(resultPackage.playerA.userId);
       checkAndFulfillReferral(resultPackage.playerB.userId);
@@ -172,6 +196,7 @@ export class BattleResultProcessor {
         xp: reward.xp.current,
         totalXp: reward.xp.current,
         level: reward.xp.levelAfter,
+        leaderboardEligible: reward.xp.levelAfter >= 3,
         coins: reward.coins.current,
         eloRating: reward.elo.current,
         battleRating: reward.elo.current,
