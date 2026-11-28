@@ -98,9 +98,16 @@ export class XpTransactionService {
   }
 
   /**
-   * Fetches recent XP audit transactions for a user
+   * Fetches recent XP audit transactions for a user (with cursor-based pagination)
    */
-  public static async getUserTransactions(userId: string, limitCount: number = 20): Promise<XpTransactionRecord[]> {
+  public static async getUserTransactionsPaginated(
+    userId: string,
+    limitCount: number = 10,
+    cursor?: string | null
+  ): Promise<{ transactions: XpTransactionRecord[]; nextCursor: string | null; hasMore: boolean }> {
+    const safeLimit = Math.min(50, Math.max(1, Number(limitCount) || 10));
+    let list: XpTransactionRecord[] = [];
+
     if (db && typeof db.collection === 'function') {
       try {
         const snapshot = await db
@@ -109,19 +116,63 @@ export class XpTransactionService {
           .get();
 
         if (snapshot && !snapshot.empty) {
-          const list: XpTransactionRecord[] = [];
           snapshot.forEach((doc: any) => {
-            list.push(doc.data() as XpTransactionRecord);
+            const d = doc.data() as XpTransactionRecord;
+            if (d && d.userId === userId) {
+              list.push({ id: doc.id, ...d });
+            }
           });
-          list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-          return list.slice(0, limitCount);
         }
       } catch (err) {
         console.warn(`[XpTransactionService] DB fetch failed, falling back to memory history:`, err);
+        list = [...(memoryTransactionHistory.get(userId) || [])];
+      }
+    } else {
+      list = [...(memoryTransactionHistory.get(userId) || [])];
+    }
+
+    // Sort deterministically newest-first (createdAt DESC, id DESC)
+    list.sort((a, b) => {
+      const timeDiff = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      if (timeDiff !== 0) return timeDiff;
+      return String(b.id || '').localeCompare(String(a.id || ''));
+    });
+
+    let startIndex = 0;
+    if (cursor && typeof cursor === 'string' && cursor.includes('::')) {
+      const [cursorTime, cursorId] = cursor.split('::');
+      const cursorMs = new Date(cursorTime).getTime();
+      startIndex = list.findIndex(tx => {
+        const txMs = new Date(tx.createdAt).getTime();
+        if (txMs < cursorMs) return true;
+        if (txMs === cursorMs && String(tx.id || '') < cursorId) return true;
+        return false;
+      });
+      if (startIndex === -1) {
+        return { transactions: [], nextCursor: null, hasMore: false };
       }
     }
 
-    return (memoryTransactionHistory.get(userId) || []).slice(0, limitCount);
+    const pageItems = list.slice(startIndex, startIndex + safeLimit);
+    const hasMore = startIndex + safeLimit < list.length;
+    const lastTx = pageItems[pageItems.length - 1];
+    const nextCursor = hasMore && lastTx
+      ? `${lastTx.createdAt}::${lastTx.id || ''}`
+      : null;
+
+    return {
+      transactions: pageItems,
+      nextCursor,
+      hasMore
+    };
+  }
+
+  /**
+   * Fetches recent XP audit transactions for a user
+   */
+  public static async getUserTransactions(userId: string, limitCount: number = 20): Promise<XpTransactionRecord[]> {
+    const res = await this.getUserTransactionsPaginated(userId, limitCount);
+    return res.transactions;
   }
 
   /**

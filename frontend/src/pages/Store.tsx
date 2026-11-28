@@ -7,10 +7,6 @@ import { getAvatarImageUrl } from '../utils/avatarResolver';
 
 export const Store: React.FC = () => {
   const { userProfile, token } = useAuthStore();
-  const [spinning, setSpinning] = useState(false);
-  const [spinResult, setSpinResult] = useState<string | null>(null);
-  const [openingBox, setOpeningBox] = useState(false);
-  const [boxResult, setBoxResult] = useState<string | null>(null);
   const [purchasingId, setPurchasingId] = useState<string | null>(null);
   const [equippingId, setEquippingId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -31,10 +27,6 @@ export const Store: React.FC = () => {
   const [previewTitle, setPreviewTitle] = useState<string>(userProfile?.equippedTitle || '');
 
   if (!userProfile) return null;
-
-  const tzOffset = 5.5 * 60 * 60 * 1000; // IST Timezone
-  const todayStr = new Date(Date.now() + tzOffset).toISOString().split('T')[0];
-  const isFreeSpin = userProfile.lastSpinDate !== todayStr;
 
   // Avatar resolution helper
   const getAvatarUrl = (visual: string) => {
@@ -122,72 +114,6 @@ export const Store: React.FC = () => {
 
     return items;
   }, [selectedCategory, searchQuery, rarityFilter, ownershipFilter, sortBy, userProfile]);
-
-  const handleSpin = async () => {
-    if (spinning) return;
-    setSpinning(true);
-    setSpinResult(null);
-    setErrorMessage(null);
-    setSuccessMessage(null);
-
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-
-    try {
-      const res = await fetch('/api/auth/lucky-spin', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Lucky Spin failed');
-      }
-      const data = await res.json();
-      if (data.profile) {
-        useAuthStore.setState({ userProfile: data.profile });
-      }
-      setSpinResult(data.message);
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Spin execution failed');
-    } finally {
-      setSpinning(false);
-    }
-  };
-
-  const handleOpenBox = async () => {
-    if (openingBox) return;
-    setOpeningBox(true);
-    setBoxResult(null);
-    setErrorMessage(null);
-    setSuccessMessage(null);
-
-    await new Promise((resolve) => setTimeout(resolve, 1200));
-
-    try {
-      const res = await fetch('/api/auth/mystery-box/open', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to open box');
-      }
-      const data = await res.json();
-      if (data.profile) {
-        useAuthStore.setState({ userProfile: data.profile });
-      }
-      setBoxResult(data.message);
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Box open failed');
-    } finally {
-      setOpeningBox(false);
-    }
-  };
 
   const handleBuyItem = async (itemId: string) => {
     setPurchasingId(itemId);
@@ -606,61 +532,6 @@ export const Store: React.FC = () => {
               </div>
             )}
           </div>
-        </div>
-      </div>
-
-      {/* Daily Spin & Mystery Boxes Section */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-border-dark">
-        {/* Lucky Spin Card */}
-        <div className="bg-surface-dark border border-border-dark p-5 rounded-2xl flex flex-col justify-between items-center text-center space-y-4 shadow-xs">
-          <div className="space-y-1">
-            <h3 className="font-semibold text-sm text-text-primary">Daily Lucky Reward</h3>
-            <p className="text-xs text-text-muted">Spin once daily for coin bundles, XP bonuses, or surprise chests.</p>
-          </div>
-
-          <div className="w-20 h-20 rounded-full border-2 border-dashed border-border-dark bg-surface-elevated flex items-center justify-center text-2xl">
-            🎯
-          </div>
-
-          {spinResult && (
-            <div className="p-2.5 rounded-lg border border-brand-500/30 bg-brand-500/10 text-xs font-medium text-brand-400">
-              {spinResult}
-            </div>
-          )}
-
-          <button
-            onClick={handleSpin}
-            disabled={spinning || (!isFreeSpin && userProfile.coins < 50)}
-            className="w-full max-w-xs py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold text-xs transition-colors cursor-pointer disabled:opacity-50"
-          >
-            {spinning ? 'Evaluating...' : isFreeSpin ? 'Claim Free Daily Spin' : 'Spin (50 Coins)'}
-          </button>
-        </div>
-
-        {/* Mystery Box Card */}
-        <div className="bg-surface-dark border border-border-dark p-5 rounded-2xl flex flex-col justify-between items-center text-center space-y-4 shadow-xs">
-          <div className="space-y-1">
-            <h3 className="font-semibold text-sm text-text-primary">Reward Mystery Chest</h3>
-            <p className="text-xs text-text-muted">Open earned boxes to unlock rare items and coin rewards.</p>
-          </div>
-
-          <div className="w-20 h-20 rounded-full border-2 border-dashed border-border-dark bg-surface-elevated flex items-center justify-center text-2xl">
-            📦
-          </div>
-
-          {boxResult && (
-            <div className="p-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-xs font-medium text-emerald-400">
-              {boxResult}
-            </div>
-          )}
-
-          <button
-            onClick={handleOpenBox}
-            disabled={openingBox || !userProfile.mysteryBoxes || userProfile.mysteryBoxes < 1}
-            className="w-full max-w-xs py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-colors cursor-pointer disabled:opacity-50"
-          >
-            {openingBox ? 'Opening...' : `Open Reward Box (${userProfile.mysteryBoxes || 0} remaining)`}
-          </button>
         </div>
       </div>
     </div>

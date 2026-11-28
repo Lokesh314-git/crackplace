@@ -22,42 +22,100 @@ export const Profile: React.FC = () => {
   const navigate = useNavigate();
   const readiness = calculatePlacementReadiness(userProfile);
   const [activeTab, setActiveTab] = React.useState<'achievements' | 'history' | 'xp_history'>('achievements');
+
+  // Assessment History pagination state
   const [history, setHistory] = React.useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = React.useState(false);
+  const [loadingMoreHistory, setLoadingMoreHistory] = React.useState(false);
+  const [historyError, setHistoryError] = React.useState<string | null>(null);
+  const [historyCursor, setHistoryCursor] = React.useState<string | null>(null);
+  const [historyHasMore, setHistoryHasMore] = React.useState(false);
+  const [historyAllLoaded, setHistoryAllLoaded] = React.useState(false);
+
+  // XP Log pagination state
   const [xpTransactions, setXpTransactions] = React.useState<any[]>([]);
   const [loadingXpTx, setLoadingXpTx] = React.useState(false);
+  const [loadingMoreXp, setLoadingMoreXp] = React.useState(false);
+  const [xpError, setXpError] = React.useState<string | null>(null);
+  const [xpCursor, setXpCursor] = React.useState<string | null>(null);
+  const [xpHasMore, setXpHasMore] = React.useState(false);
+  const [xpAllLoaded, setXpAllLoaded] = React.useState(false);
+
+  const fetchAssessmentHistory = React.useCallback(async (cursor?: string | null, append = false) => {
+    if (!token) return;
+    if (append) {
+      setLoadingMoreHistory(true);
+    } else {
+      setLoadingHistory(true);
+    }
+    setHistoryError(null);
+
+    try {
+      const url = `/api/auth/assessments/history?limit=10${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      const res = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load assessment history');
+
+      const incoming: any[] = data.items || [];
+      setHistory(prev => {
+        if (!append) return incoming;
+        const seen = new Set(prev.map(i => i.id || i.assessmentId));
+        return [...prev, ...incoming.filter(i => !seen.has(i.id || i.assessmentId))];
+      });
+      setHistoryCursor(data.nextCursor || null);
+      setHistoryHasMore(Boolean(data.hasMore));
+      setHistoryAllLoaded(!data.hasMore);
+    } catch (err: any) {
+      setHistoryError(err.message || 'Unable to load assessment history.');
+    } finally {
+      setLoadingHistory(false);
+      setLoadingMoreHistory(false);
+    }
+  }, [token]);
+
+  const fetchXpTransactions = React.useCallback(async (cursor?: string | null, append = false) => {
+    if (!token) return;
+    if (append) {
+      setLoadingMoreXp(true);
+    } else {
+      setLoadingXpTx(true);
+    }
+    setXpError(null);
+
+    try {
+      const url = `/api/auth/xp/transactions?limit=10${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      const res = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load XP transactions');
+
+      const incoming: any[] = data.transactions || [];
+      setXpTransactions(prev => {
+        if (!append) return incoming;
+        const seen = new Set(prev.map(tx => tx.id || `${tx.source}_${tx.referenceId}_${tx.createdAt}`));
+        return [...prev, ...incoming.filter(tx => !seen.has(tx.id || `${tx.source}_${tx.referenceId}_${tx.createdAt}`))];
+      });
+      setXpCursor(data.nextCursor || null);
+      setXpHasMore(Boolean(data.hasMore));
+      setXpAllLoaded(!data.hasMore);
+    } catch (err: any) {
+      setXpError(err.message || 'Unable to load XP transaction log.');
+    } finally {
+      setLoadingXpTx(false);
+      setLoadingMoreXp(false);
+    }
+  }, [token]);
 
   React.useEffect(() => {
     if (activeTab === 'history' && token) {
-      setLoadingHistory(true);
-      fetch('/api/auth/battle/history', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-        .then(res => res.json())
-        .then(data => {
-          setHistory(data.history || []);
-          setLoadingHistory(false);
-        })
-        .catch(err => {
-          console.error(err);
-          setLoadingHistory(false);
-        });
+      fetchAssessmentHistory(null, false);
     } else if (activeTab === 'xp_history' && token) {
-      setLoadingXpTx(true);
-      fetch('/api/auth/xp/transactions', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-        .then(res => res.json())
-        .then(data => {
-          setXpTransactions(data.transactions || []);
-          setLoadingXpTx(false);
-        })
-        .catch(err => {
-          console.error(err);
-          setLoadingXpTx(false);
-        });
+      fetchXpTransactions(null, false);
     }
-  }, [activeTab, token]);
+  }, [activeTab, token, fetchAssessmentHistory, fetchXpTransactions]);
 
   if (!userProfile) return null;
 
@@ -287,84 +345,144 @@ export const Profile: React.FC = () => {
 
       {activeTab === 'history' && (
         <div className="bg-surface-dark border border-border-dark p-5 rounded-2xl space-y-4 shadow-xs">
-          <div className="flex items-center gap-2 border-b border-border-dark pb-2">
-            <FaTrophy className="w-4 h-4 text-brand-400" />
-            <h3 className="font-semibold text-xs uppercase tracking-wider text-text-muted">
-              Recent 1v1 Battle Sessions
-            </h3>
+          <div className="flex items-center justify-between border-b border-border-dark pb-2">
+            <div className="flex items-center gap-2">
+              <FaTrophy className="w-4 h-4 text-brand-400" />
+              <h3 className="font-semibold text-xs uppercase tracking-wider text-text-muted">
+                Assessment History
+              </h3>
+            </div>
+            <span className="text-[10px] font-mono text-text-muted">Newest First</span>
           </div>
 
           {loadingHistory ? (
             <div className="text-center py-8">
               <div className="w-6 h-6 rounded-full border-2 border-brand-500 border-t-transparent animate-spin mx-auto"></div>
-              <p className="text-xs text-text-muted mt-2">Loading match history...</p>
+              <p className="text-xs text-text-muted mt-2">Loading assessment history...</p>
+            </div>
+          ) : historyError ? (
+            <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-center space-y-2">
+              <p className="text-xs text-rose-400 font-medium">{historyError}</p>
+              <button
+                type="button"
+                onClick={() => fetchAssessmentHistory(null, false)}
+                className="px-3.5 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Retry
+              </button>
             </div>
           ) : history.length === 0 ? (
             <div className="text-center py-8 space-y-1">
-              <p className="text-xs text-text-secondary font-medium">No battle records yet.</p>
-              <p className="text-[11px] text-text-muted">Complete your first 1v1 match in the Battle Arena to see results here.</p>
+              <p className="text-xs text-text-secondary font-medium">No completed assessments yet.</p>
+              <p className="text-[11px] text-text-muted">Complete a practice quiz, coding challenge, mock interview, or 1v1 battle to see your history here.</p>
             </div>
           ) : (
             <div className="space-y-2.5">
               {history.map((item) => {
-                const myUid = userProfile.uid;
-                const oppUid = item.uids?.find((uid: string) => uid !== myUid) 
-                  || Object.keys(item.players || {}).find(uid => uid !== myUid) 
-                  || Object.keys(item.scores || {}).find(uid => uid !== myUid);
-
-                const me = item.players?.[myUid];
-                const opp = oppUid ? item.players?.[oppUid] : null;
-
-                const myScore = me?.score ?? item.scores?.[myUid] ?? 0;
-                const oppScore = opp?.score ?? (oppUid ? item.scores?.[oppUid] : 0) ?? 0;
-
-                const isDraw = item.isDraw || item.winnerId === 'draw';
-                const isWinner = item.winnerId === myUid;
-
-                let outcomeText = 'Draw';
-                let outcomeColor = 'bg-slate-500/10 text-slate-300 border-slate-500/20';
-                if (!isDraw) {
-                  outcomeText = isWinner ? 'Won' : 'Lost';
-                  outcomeColor = isWinner 
-                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
-                    : 'bg-rose-500/10 text-rose-400 border-rose-500/20';
-                }
-
-                const myEloChange = me?.eloChange ?? item.eloChanges?.[myUid] ?? (isDraw ? 0 : (isWinner ? 25 : -20));
+                const isBattle = item.type === 'battle';
+                const typeLabels: Record<string, string> = {
+                  quiz: 'Practice Quiz',
+                  coding: 'Coding Challenge',
+                  interview: 'Mock Interview',
+                  study_notes: 'Study Test',
+                  battle: '1v1 Battle'
+                };
+                const typeBadge = typeLabels[item.type] || 'Assessment';
+                const isDraw = Boolean(item.isDraw || item.winnerId === 'draw');
+                const isWinner = item.winnerId === userProfile.uid;
 
                 return (
-                  <div key={item.id} className="p-3.5 rounded-xl border border-border-dark bg-surface-elevated/30 flex items-center justify-between gap-3 text-xs">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-8 h-8 rounded-lg bg-surface-dark border border-border-dark overflow-hidden flex items-center justify-center font-bold text-[10px] shrink-0">
-                        <img src={getUserAvatarUrl(opp)} alt={opp?.displayName || 'Opponent'} className="w-full h-full object-cover" />
-                      </div>
-                      <div className="min-w-0">
-                        <span className="text-[10px] font-semibold text-brand-400 uppercase">{item.category}</span>
-                        <h4 className="font-semibold text-text-primary truncate">vs {opp?.displayName || 'Peer Candidate'}</h4>
-                        <p className="text-[10px] text-text-muted">{new Date(item.createdAt).toLocaleDateString()}</p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-4 shrink-0">
-                      <div className="text-right">
-                        <span className="text-[10px] text-text-muted block">Score</span>
-                        <span className="font-bold text-text-primary font-mono">{myScore} - {oppScore}</span>
-                      </div>
-                      
-                      <div className="text-right hidden sm:block">
-                        <span className="text-[10px] text-text-muted block">Elo Change</span>
-                        <span className={`font-bold font-mono ${myEloChange >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          {myEloChange >= 0 ? `+${myEloChange}` : myEloChange}
+                  <div key={item.id || item.assessmentId} className="p-3.5 rounded-xl border border-border-dark bg-surface-elevated/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="px-2 py-0.5 rounded-md bg-brand-600/10 border border-brand-500/20 text-[10px] font-semibold text-brand-400 uppercase">
+                          {typeBadge}
+                        </span>
+                        <span className="text-[10px] text-text-muted capitalize">
+                          {item.category}{item.topic && item.topic !== 'General' ? ` • ${item.topic}` : ''} • {item.difficulty || 'medium'}
                         </span>
                       </div>
+                      <h4 className="font-semibold text-text-primary truncate">{item.title || typeBadge}</h4>
+                      <p className="text-[10px] text-text-muted font-mono">
+                        {new Date(item.completedAt || item.createdAt).toLocaleString()}
+                      </p>
+                    </div>
 
-                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border ${outcomeColor}`}>
-                        {outcomeText}
-                      </span>
+                    <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0">
+                      {isBattle ? (
+                        <>
+                          <div className="text-right">
+                            <span className="text-[10px] text-text-muted block">Score</span>
+                            <span className="font-bold text-text-primary font-mono">{item.score} - {item.opponentScore ?? 0}</span>
+                          </div>
+                          {typeof item.eloChange === 'number' && (
+                            <div className="text-right">
+                              <span className="text-[10px] text-text-muted block">Elo</span>
+                              <span className={`font-bold font-mono ${item.eloChange >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                {item.eloChange >= 0 ? `+${item.eloChange}` : item.eloChange}
+                              </span>
+                            </div>
+                          )}
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border ${
+                            isDraw
+                              ? 'bg-slate-500/10 text-slate-300 border-slate-500/20'
+                              : isWinner
+                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                          }`}>
+                            {isDraw ? 'Draw' : isWinner ? 'Won' : 'Lost'}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-right">
+                            <span className="text-[10px] text-text-muted block">Score / Accuracy</span>
+                            <span className="font-bold text-text-primary font-mono">{item.score ?? 0}%</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-[10px] text-text-muted block">XP Earned</span>
+                            <span className="font-bold text-purple-400 font-mono">+{item.xpEarned ?? 0} XP</span>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 );
               })}
+
+              {/* View More / Show Less Controls */}
+              <div className="flex items-center justify-center gap-3 pt-3">
+                {historyHasMore && (
+                  <button
+                    type="button"
+                    disabled={loadingMoreHistory}
+                    onClick={() => fetchAssessmentHistory(historyCursor, true)}
+                    className="px-4 py-2 rounded-xl bg-surface-elevated hover:bg-slate-700 border border-border-dark text-xs font-semibold text-text-primary transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {loadingMoreHistory && <span className="w-3.5 h-3.5 rounded-full border-2 border-brand-500 border-t-transparent animate-spin" />}
+                    <span>{loadingMoreHistory ? 'Loading...' : 'View More'}</span>
+                  </button>
+                )}
+                {history.length > 10 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const firstTen = history.slice(0, 10);
+                      setHistory(firstTen);
+                      const tenth = firstTen[firstTen.length - 1];
+                      setHistoryCursor(tenth ? `${tenth.completedAt}::${tenth.id || tenth.assessmentId}` : null);
+                      setHistoryHasMore(true);
+                      setHistoryAllLoaded(false);
+                    }}
+                    className="px-4 py-2 rounded-xl border border-border-dark hover:bg-surface-elevated text-xs font-semibold text-text-muted hover:text-text-primary transition-colors cursor-pointer"
+                  >
+                    Show Less
+                  </button>
+                )}
+                {!historyHasMore && historyAllLoaded && history.length > 0 && (
+                  <span className="text-[11px] text-text-muted font-medium">No more history</span>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -387,6 +505,17 @@ export const Profile: React.FC = () => {
               <div className="w-6 h-6 rounded-full border-2 border-brand-500 border-t-transparent animate-spin mx-auto"></div>
               <p className="text-xs text-text-muted mt-2">Loading immutable transaction records...</p>
             </div>
+          ) : xpError ? (
+            <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-center space-y-2">
+              <p className="text-xs text-rose-400 font-medium">{xpError}</p>
+              <button
+                type="button"
+                onClick={() => fetchXpTransactions(null, false)}
+                className="px-3.5 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Retry
+              </button>
+            </div>
           ) : xpTransactions.length === 0 ? (
             <div className="text-center py-8 space-y-1">
               <p className="text-xs text-text-secondary font-medium">No XP transactions logged yet.</p>
@@ -397,39 +526,47 @@ export const Profile: React.FC = () => {
               {xpTransactions.map((tx, idx) => {
                 const sourceLabels: Record<string, string> = {
                   battle: '1v1 Battle Arena',
-                  quiz: 'Subject Placement Quiz',
-                  coding: 'Algorithmic Challenge',
+                  quiz: 'Quiz Completed',
+                  coding: 'Coding Challenge',
                   interview: 'Mock HR Interview',
                   study_notes: 'Study Cheatsheet Test',
-                  mission: 'Gamified Mission Goal',
-                  daily_login: 'Daily Routine Login',
+                  mission: 'Daily Challenge / Mission',
+                  daily_login: 'Daily Login',
                   lucky_spin: 'Armory Lucky Spin',
                   mystery_box: 'Mystery Loot Box',
-                  achievement: 'Milestone Achievement'
+                  achievement: 'Milestone Achievement',
+                  admin: 'Admin Adjustment'
                 };
 
-                const label = sourceLabels[tx.source] || tx.source.toUpperCase();
+                const label = sourceLabels[tx.source] || String(tx.source || 'ACTIVITY').toUpperCase();
+                const delta = Number(tx.xpEarned ?? 0);
+                const isPositive = delta >= 0;
 
                 return (
                   <div key={tx.id || idx} className="p-3.5 rounded-xl border border-border-dark bg-surface-elevated/30 flex items-center justify-between gap-3 text-xs">
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold text-text-primary text-xs">{label}</span>
+                        <span className="px-1.5 py-0.5 rounded bg-surface-dark border border-border-dark text-[10px] text-text-muted uppercase">
+                          {tx.source}
+                        </span>
                         {tx.leveledUp && (
                           <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/30">
                             ★ Level Up! (Lvl {tx.levelBefore} → {tx.levelAfter})
                           </span>
                         )}
                       </div>
-                      <p className="text-[10px] text-text-muted mt-0.5 font-mono">
-                        {new Date(tx.createdAt).toLocaleString()} • Ref: {tx.referenceId}
+                      <p className="text-[10px] text-text-muted mt-0.5 font-mono truncate">
+                        {new Date(tx.createdAt).toLocaleString()}{tx.referenceId ? ` • Ref: ${tx.referenceId}` : ''}
                       </p>
                     </div>
 
                     <div className="flex items-center gap-4 shrink-0 text-right">
                       <div>
                         <span className="text-[10px] text-text-muted block">XP Delta</span>
-                        <span className="font-bold text-purple-400 font-mono text-sm">+{tx.xpEarned} XP</span>
+                        <span className={`font-bold font-mono text-sm ${isPositive ? 'text-purple-400' : 'text-rose-400'}`}>
+                          {isPositive ? `+${delta}` : delta} XP
+                        </span>
                       </div>
                       <div className="hidden sm:block">
                         <span className="text-[10px] text-text-muted block">Balance</span>
@@ -443,6 +580,40 @@ export const Profile: React.FC = () => {
                   </div>
                 );
               })}
+
+              {/* View More / Show Less Controls */}
+              <div className="flex items-center justify-center gap-3 pt-3">
+                {xpHasMore && (
+                  <button
+                    type="button"
+                    disabled={loadingMoreXp}
+                    onClick={() => fetchXpTransactions(xpCursor, true)}
+                    className="px-4 py-2 rounded-xl bg-surface-elevated hover:bg-slate-700 border border-border-dark text-xs font-semibold text-text-primary transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {loadingMoreXp && <span className="w-3.5 h-3.5 rounded-full border-2 border-brand-500 border-t-transparent animate-spin" />}
+                    <span>{loadingMoreXp ? 'Loading...' : 'View More'}</span>
+                  </button>
+                )}
+                {xpTransactions.length > 10 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const firstTen = xpTransactions.slice(0, 10);
+                      setXpTransactions(firstTen);
+                      const tenth = firstTen[firstTen.length - 1];
+                      setXpCursor(tenth ? `${tenth.createdAt}::${tenth.id || ''}` : null);
+                      setXpHasMore(true);
+                      setXpAllLoaded(false);
+                    }}
+                    className="px-4 py-2 rounded-xl border border-border-dark hover:bg-surface-elevated text-xs font-semibold text-text-muted hover:text-text-primary transition-colors cursor-pointer"
+                  >
+                    Show Less
+                  </button>
+                )}
+                {!xpHasMore && xpAllLoaded && xpTransactions.length > 0 && (
+                  <span className="text-[11px] text-text-muted font-medium">No more transactions</span>
+                )}
+              </div>
             </div>
           )}
         </div>

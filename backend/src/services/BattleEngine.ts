@@ -2,6 +2,7 @@ import { Server, Socket } from 'socket.io';
 import { redisClient } from '../config/redis';
 import { db } from '../config/firebase';
 import { QuestionService } from './QuestionService';
+import { AssessmentHistoryService } from './AssessmentHistoryService';
 import { Question, SanitizedQuestion } from '../types/question';
 import { syncMissionsState, processMissionProgress, checkAndUnlockAchievements, calculateLevelFromXP } from '../utils/gamification';
 import {
@@ -1308,6 +1309,57 @@ export class BattleEngine {
           if (roomDoc.exists) {
             await roomRef.update({ status: 'completed', completedAt: new Date().toISOString() });
           }
+
+          // Persist synchronized Assessment History entries for both players
+          const completedAt = new Date().toISOString();
+          await Promise.all([
+            AssessmentHistoryService.recordCompletedAssessment({
+              assessmentId: battleId,
+              userId: p1.userId,
+              type: 'battle',
+              title: `1v1 Battle vs ${p2.displayName || 'Peer Candidate'}`,
+              category: battle.battleType,
+              topic: '1v1 Competitive',
+              difficulty: 'Medium',
+              totalQuestions: battle.totalQuestions,
+              correctAnswers: Object.values(p1.submissions || {}).filter((s: any) => s.isCorrect).length,
+              incorrectAnswers: battle.totalQuestions - Object.values(p1.submissions || {}).filter((s: any) => s.isCorrect).length,
+              accuracy: battle.totalQuestions > 0 ? Math.round((Object.values(p1.submissions || {}).filter((s: any) => s.isCorrect).length / battle.totalQuestions) * 100) : 0,
+              score: resultPackage.playerA.score,
+              xpEarned: resultPackage.playerA.xp.earned,
+              completedAt,
+              durationSeconds: Math.round((Date.now() - (battle.battleStartedAt || battle.createdAt || Date.now())) / 1000),
+              opponentName: p2.displayName || 'Peer Candidate',
+              opponentAvatar: p2.photoURL || '',
+              opponentScore: resultPackage.playerB.score,
+              winnerId: resultPackage.winnerId,
+              isDraw: resultPackage.isDraw,
+              eloChange: resultPackage.playerA.elo.change
+            }),
+            AssessmentHistoryService.recordCompletedAssessment({
+              assessmentId: battleId,
+              userId: p2.userId,
+              type: 'battle',
+              title: `1v1 Battle vs ${p1.displayName || 'Peer Candidate'}`,
+              category: battle.battleType,
+              topic: '1v1 Competitive',
+              difficulty: 'Medium',
+              totalQuestions: battle.totalQuestions,
+              correctAnswers: Object.values(p2.submissions || {}).filter((s: any) => s.isCorrect).length,
+              incorrectAnswers: battle.totalQuestions - Object.values(p2.submissions || {}).filter((s: any) => s.isCorrect).length,
+              accuracy: battle.totalQuestions > 0 ? Math.round((Object.values(p2.submissions || {}).filter((s: any) => s.isCorrect).length / battle.totalQuestions) * 100) : 0,
+              score: resultPackage.playerB.score,
+              xpEarned: resultPackage.playerB.xp.earned,
+              completedAt,
+              durationSeconds: Math.round((Date.now() - (battle.battleStartedAt || battle.createdAt || Date.now())) / 1000),
+              opponentName: p1.displayName || 'Peer Candidate',
+              opponentAvatar: p1.photoURL || '',
+              opponentScore: resultPackage.playerA.score,
+              winnerId: resultPackage.winnerId,
+              isDraw: resultPackage.isDraw,
+              eloChange: resultPackage.playerB.elo.change
+            })
+          ]);
         }
       } catch (histErr) {
         logger.error('Failed to log immutable battle history / update room completion', { battleId, error: String(histErr) });

@@ -23,6 +23,8 @@ const Personalization = lazy(() => import('./pages/Personalization'));
 const InvitePromote = lazy(() => import('./pages/InvitePromote'));
 const AdminPanel = lazy(() => import('./pages/AdminPanel'));
 const StudyNotes = lazy(() => import('./pages/StudyNotes'));
+const LuckySpin = lazy(() => import('./pages/LuckySpin'));
+const MysteryChest = lazy(() => import('./pages/MysteryChest'));
 
 // Public SEO and Marketing components
 const LandingSelector = lazy(() => import('./components/LandingSelector'));
@@ -92,6 +94,8 @@ export const App: React.FC = () => {
               <Route path="/profile" element={<Profile />} />
               <Route path="/personalization" element={<Personalization />} />
               <Route path="/store" element={<Store />} />
+              <Route path="/lucky-spin" element={<LuckySpin />} />
+              <Route path="/mystery-chest" element={<MysteryChest />} />
               <Route path="/study-notes" element={<StudyNotes />} />
               <Route path="/invite-promote" element={<InvitePromote />} />
               <Route path="/admin" element={<AdminPanel />} />

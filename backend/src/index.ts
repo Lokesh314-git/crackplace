@@ -26,6 +26,7 @@ import {
   processMissionProgress
 } from './utils/gamification';
 import { XpTransactionService } from './services/XpTransactionService';
+import { AssessmentHistoryService } from './services/AssessmentHistoryService';
 import { COSMETICS_CATALOG, checkIsLegendaryPlayer } from './utils/cosmetics';
 import { resolveUserAvatar, getAvatarImageUrl, getUserAvatarUrl } from './utils/avatarResolver';
 import { isUserExcludedFromLeaderboard, cleanupLeaderboardStaleRecords, invalidateLeaderboardCache } from './services/leaderboardCleanup';
@@ -1292,10 +1293,24 @@ app.post('/api/auth/mystery-box/open', strictAuthLimiter, verifyToken, async (re
 app.get('/api/auth/xp/transactions', verifyToken, async (req: AuthenticatedRequest, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
   try {
-    const transactions = await XpTransactionService.getUserTransactions(req.user.uid, 50);
-    res.json({ transactions });
+    const limitCount = Math.min(50, Math.max(1, Number(req.query.limit) || 10));
+    const cursor = typeof req.query.cursor === 'string' ? req.query.cursor : null;
+    const result = await XpTransactionService.getUserTransactionsPaginated(req.user.uid, limitCount, cursor);
+    res.json(result);
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'Failed to fetch XP transactions' });
+  }
+});
+
+app.get('/api/auth/assessments/history', verifyToken, async (req: AuthenticatedRequest, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const limitCount = Math.min(50, Math.max(1, Number(req.query.limit) || 10));
+    const cursor = typeof req.query.cursor === 'string' ? req.query.cursor : null;
+    const result = await AssessmentHistoryService.getUserHistoryPaginated(req.user.uid, limitCount, cursor);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to fetch assessment history' });
   }
 });
 

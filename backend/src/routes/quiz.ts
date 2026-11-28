@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { verifyToken, optionalAuth, AuthenticatedRequest } from '../middleware/auth';
 import { QuestionService } from '../services/QuestionService';
+import { AssessmentHistoryService } from '../services/AssessmentHistoryService';
 import { db } from '../config/firebase';
 import { z } from 'zod';
 import { calculateLevelFromXP, LevelCalculator, syncMissionsState, processMissionProgress, checkAndUnlockAchievements, updateDailyStreak } from '../utils/gamification';
@@ -240,6 +241,7 @@ router.post('/generate', optionalAuth, async (req: AuthenticatedRequest, res) =>
     const quizData = {
       userId,
       category,
+      topic: topic || 'General',
       difficulty,
       language,
       company: company || 'General',
@@ -559,6 +561,26 @@ router.post(['/:quizId/results', '/:quizId/submit'], optionalAuth, async (req: A
 
       const quizTxKey = `quiz_${quizId}_${req.user!.uid}`;
       transaction.set(db.collection('xpTransactions').doc(quizTxKey), baseEval.transaction);
+
+      await AssessmentHistoryService.recordCompletedAssessment({
+        assessmentId: quizId,
+        userId: req.user!.uid,
+        type: 'quiz',
+        title: quizData.topic && quizData.topic !== 'General' && quizData.topic !== 'All'
+          ? `${quizData.category} — ${quizData.topic}`
+          : `${quizData.category || 'Placement'} Quiz`,
+        category: quizData.category || 'General',
+        topic: quizData.topic || 'General',
+        difficulty: quizData.difficulty || 'medium',
+        totalQuestions: questionCount,
+        correctAnswers: Number(results.correctAnswers ?? 0),
+        incorrectAnswers: Math.max(0, questionCount - Number(results.correctAnswers ?? 0)),
+        accuracy: score,
+        score,
+        xpEarned: baseEval.xpEarned,
+        completedAt: submittedAt,
+        durationSeconds: Number(results.timeTakenSeconds ?? 0)
+      }, transaction);
 
       transaction.update(quizDocRef, {
         results,

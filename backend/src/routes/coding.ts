@@ -4,6 +4,7 @@ import { AIService } from '../services/AIService';
 import { db } from '../config/firebase';
 import { z } from 'zod';
 import { calculateLevelFromXP, calculateLevelProgress, LevelCalculator, syncMissionsState, processMissionProgress, checkAndUnlockAchievements, updateDailyStreak } from '../utils/gamification';
+import { AssessmentHistoryService } from '../services/AssessmentHistoryService';
 import { calculatePlacementReadiness } from '../utils/readiness';
 import { XpTransactionService } from '../services/XpTransactionService';
 import { checkAndFulfillReferral } from '../services/referralService';
@@ -341,6 +342,24 @@ JSON Schema:
             // Record base coding challenge XP transaction
             const codingTxKey = `coding_${problemId}_${req.user!.uid}`;
             transaction.set(db.collection('xpTransactions').doc(codingTxKey), baseEval.transaction);
+
+            await AssessmentHistoryService.recordCompletedAssessment({
+              assessmentId: problemId,
+              userId: req.user!.uid,
+              type: 'coding',
+              title: problemData.title || 'Coding Challenge',
+              category: problemData.topic || 'DSA & Coding',
+              topic: problemData.topic || 'Algorithms',
+              difficulty: problemData.difficulty || 'medium',
+              totalQuestions: 1,
+              correctAnswers: 1,
+              incorrectAnswers: 0,
+              accuracy: 100,
+              score: 100,
+              xpEarned: baseEval.xpEarned,
+              completedAt: new Date().toISOString(),
+              durationSeconds: 0
+            }, transaction);
 
             // Mark problem as solved and increment runCount
             transaction.update(problemDocRef, {

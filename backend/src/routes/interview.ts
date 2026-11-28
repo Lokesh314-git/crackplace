@@ -5,6 +5,7 @@ import { db } from '../config/firebase';
 import { z } from 'zod';
 import crypto from 'crypto';
 import { calculateLevelFromXP, calculateLevelProgress, LevelCalculator, syncMissionsState, processMissionProgress, checkAndUnlockAchievements, updateDailyStreak } from '../utils/gamification';
+import { AssessmentHistoryService } from '../services/AssessmentHistoryService';
 import { calculatePlacementReadiness } from '../utils/readiness';
 import { XpTransactionService } from '../services/XpTransactionService';
 import { checkAndFulfillReferral } from '../services/referralService';
@@ -277,6 +278,24 @@ JSON Schema:
             // Record base interview XP transaction
             const interviewTxKey = `interview_${dialogueHash}_${req.user!.uid}`;
             transaction.set(db.collection('xpTransactions').doc(interviewTxKey), baseEval.transaction);
+
+            await AssessmentHistoryService.recordCompletedAssessment({
+              assessmentId: dialogueHash,
+              userId: req.user!.uid,
+              type: 'interview',
+              title: `Mock HR Interview (${dreamCompany || 'Software Engineer'})`,
+              category: 'HR & Behavioral',
+              topic: dreamCompany || 'Behavioral',
+              difficulty: 'medium',
+              totalQuestions: Math.max(1, userResponsesCount),
+              correctAnswers: Math.max(1, userResponsesCount),
+              incorrectAnswers: 0,
+              accuracy: Number(overall) || 70,
+              score: Number(overall) || 70,
+              xpEarned: baseEval.xpEarned,
+              completedAt: new Date().toISOString(),
+              durationSeconds: 0
+            }, transaction);
 
             const isEligible = finalEval.levelAfter >= 3;
             transaction.update(userDocRef, {

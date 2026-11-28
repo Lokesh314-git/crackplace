@@ -16,12 +16,21 @@ import {
   FaTrophy,
   FaUser,
   FaGear,
-  FaBullhorn
+  FaBullhorn,
+  FaGift,
+  FaCompactDisc,
+  FaLock,
+  FaCheck
 } from 'react-icons/fa6';
 
 export const Sidebar: React.FC = () => {
   const { userProfile, logout } = useAuthStore();
   const navigate = useNavigate();
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const isFreeSpinAvailable = Boolean(userProfile && userProfile.lastSpinDate !== todayStr);
+  const mysteryBoxCount = userProfile?.mysteryBoxes || 0;
+  const isChestAvailable = mysteryBoxCount > 0;
 
   const handleLogout = async () => {
     try {
@@ -105,6 +114,75 @@ export const Sidebar: React.FC = () => {
             ))}
           </div>
         ))}
+
+        {/* Daily Rewards Section */}
+        <div className="space-y-1 pt-2 border-t border-slate-100">
+          <div className="px-3 flex items-center justify-between mb-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600/90">
+              DAILY REWARDS
+            </span>
+            {(isFreeSpinAvailable || isChestAvailable) && (
+              <span className="inline-flex h-2 w-2 rounded-full bg-amber-500 animate-pulse" title="Reward available" />
+            )}
+          </div>
+
+          <NavLink
+            to="/lucky-spin"
+            className={({ isActive }) => `
+              group flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all
+              ${isActive
+                ? 'bg-gradient-to-r from-purple-50 to-amber-50 text-purple-700 font-semibold border border-purple-200/70 shadow-xs'
+                : isFreeSpinAvailable
+                  ? 'text-slate-800 bg-amber-50/50 hover:bg-amber-50 border border-amber-200/50'
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50 border border-transparent'
+              }
+            `}
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <FaCompactDisc className={`w-4 h-4 shrink-0 transition-transform duration-300 group-hover:rotate-45 ${isFreeSpinAvailable ? 'text-amber-500' : 'text-slate-400'}`} />
+              <span className="truncate">Daily Lucky Spin</span>
+            </div>
+            {isFreeSpinAvailable ? (
+              <span className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide bg-amber-500 text-white shadow-xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                Free
+              </span>
+            ) : (
+              <span className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-slate-100 text-slate-500" title="Daily free spin claimed">
+                <FaCheck className="w-2.5 h-2.5 text-emerald-500" />
+                Claimed
+              </span>
+            )}
+          </NavLink>
+
+          <NavLink
+            to="/mystery-chest"
+            className={({ isActive }) => `
+              group flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all
+              ${isActive
+                ? 'bg-gradient-to-r from-emerald-50 to-teal-50 text-emerald-700 font-semibold border border-emerald-200/70 shadow-xs'
+                : isChestAvailable
+                  ? 'text-slate-800 bg-emerald-50/50 hover:bg-emerald-50 border border-emerald-200/50'
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50 border border-transparent'
+              }
+            `}
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <FaGift className={`w-4 h-4 shrink-0 transition-transform duration-300 group-hover:scale-110 ${isChestAvailable ? 'text-emerald-500' : 'text-slate-400'}`} />
+              <span className="truncate">Mystery Chest</span>
+            </div>
+            {isChestAvailable ? (
+              <span className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500 text-white shadow-xs">
+                {mysteryBoxCount} Ready
+              </span>
+            ) : (
+              <span className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-slate-100 text-slate-400" title="No chests available">
+                <FaLock className="w-2.5 h-2.5" />
+                Empty
+              </span>
+            )}
+          </NavLink>
+        </div>
 
         {/* Admin Navigation */}
         {isAdmin && (

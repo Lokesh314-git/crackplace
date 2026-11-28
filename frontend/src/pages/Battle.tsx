@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useAuthStore } from '../store/authStore';
 import { useSearchParams } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { EntranceEffect, VictoryEffect } from '../components/battle/BattleEffects';
 import { 
   FaCircleCheck,
@@ -1764,16 +1764,23 @@ export const Battle: React.FC = () => {
     );
   }
 
+  const prefersReducedMotion = useReducedMotion();
+  const currentQuestion = questions[currentIndex];
+  const hasLongOptions = currentQuestion.options.some((opt) => opt.length > 60);
+  const myProgressPct = Math.min(100, (playerCompletedQuestions / (questions.length || 1)) * 100);
+  const oppProgressPct = Math.min(100, (opponentProgress.progressIndex / (questions.length || 1)) * 100);
+
   return (
-    <div className="max-w-4xl mx-auto flex flex-col justify-between min-h-[85vh] py-2 space-y-6">
+    <div className="w-full max-w-[1120px] mx-auto flex flex-col gap-3 sm:gap-4 pt-1 pb-6 md:pb-4 overflow-x-hidden">
       {/* Floating Status Alerts */}
       <AnimatePresence>
         {battleAlert && (
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
+            initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className={`fixed top-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl text-xs font-semibold shadow-md border ${
+            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -10 }}
+            transition={{ duration: 0.16 }}
+            className={`fixed top-16 sm:top-20 left-1/2 -translate-x-1/2 z-50 px-3.5 py-2 rounded-xl text-xs font-semibold shadow-md border max-w-[90vw] truncate ${
               battleAlert.type === 'success' 
                 ? 'bg-emerald-600 text-white border-emerald-500' 
                 : battleAlert.type === 'error'
@@ -1793,140 +1800,190 @@ export const Battle: React.FC = () => {
         />
       )}
 
-      {/* Top row controls */}
-      <div className="flex justify-between items-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 rounded-xl shadow-xs">
+      {/* Battle Information Header */}
+      <div className="flex items-center justify-between gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-2.5 py-2 sm:px-4 sm:py-3 rounded-xl shadow-xs">
         <button
           onClick={handleLeaveLobby}
-          className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+          className="shrink-0 flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white px-2 py-1.5 sm:px-3 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer whitespace-nowrap"
         >
-          <FaArrowLeft className="w-3.5 h-3.5" />
+          <FaArrowLeft className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
           <span>Exit</span>
         </button>
-        
-        <div className="text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 px-3 py-1 rounded-full border border-slate-200 dark:border-slate-700">
+
+        <div className="min-w-0 text-[11px] sm:text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 sm:px-3.5 sm:py-1.5 rounded-full border border-slate-200 dark:border-slate-700 whitespace-nowrap truncate">
           Question {currentIndex + 1} of {questions.length}
         </div>
-        
-        <div className={`font-mono text-xs font-bold px-3 py-1.5 rounded-lg border flex items-center gap-1.5 transition-colors ${
-          questionTimeLeft <= 5 
-            ? 'text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/40 animate-pulse' 
-            : 'text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40'
-        }`}>
-          <FaRegClock className="w-3.5 h-3.5" />
+
+        <div
+          className={`shrink-0 font-mono text-[11px] sm:text-xs font-bold px-2.5 py-1.5 sm:px-3 rounded-lg border flex items-center gap-1.5 transition-colors whitespace-nowrap ${
+            questionTimeLeft <= 5
+              ? 'text-rose-600 dark:text-rose-400 border-rose-300 dark:border-rose-700 bg-rose-50 dark:bg-rose-950/50 animate-pulse'
+              : questionTimeLeft <= 10
+                ? 'text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40'
+                : 'text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40'
+          }`}
+        >
+          <FaRegClock className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
           <span>{formatTimer(questionTimeLeft)}</span>
         </div>
       </div>
 
-      {/* Synchronized Score & Progress HUD */}
-      <div className="grid grid-cols-2 gap-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 rounded-xl shadow-xs">
+      {/* Synchronized Player Scoreboard */}
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-2.5 sm:p-3.5 rounded-xl shadow-xs">
         {/* YOU Card */}
-        <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-1.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase">You</span>
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 font-mono">
-                {Math.min(questions.length, playerCompletedQuestions)}/{questions.length}
-              </span>
-              <span className="text-xs font-bold text-slate-900 dark:text-white font-mono">{playerScore} pts</span>
-            </div>
+        <div className="min-w-0 p-2.5 sm:p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-blue-200/80 dark:border-blue-900/50 space-y-1.5 sm:space-y-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+            <img
+              src={getUserAvatarUrl(userProfile)}
+              alt={userProfile?.displayName || 'You'}
+              className="w-5 h-5 sm:w-7 sm:h-7 rounded-full object-cover border border-blue-400/60 shrink-0 bg-slate-200 dark:bg-slate-700"
+            />
+            <span className="text-[11px] sm:text-xs font-bold text-blue-600 dark:text-blue-400 uppercase truncate">
+              You
+            </span>
           </div>
-          <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-blue-600 transition-all duration-300 rounded-full" 
-              style={{ width: `${Math.min(100, (playerCompletedQuestions / (questions.length || 1)) * 100)}%` }}
-            ></div>
+          <div className="flex items-center justify-between gap-1">
+            <span className="text-[11px] sm:text-xs font-semibold text-slate-500 dark:text-slate-400 font-mono">
+              {Math.min(questions.length, playerCompletedQuestions)}/{questions.length}
+            </span>
+            <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white font-mono">
+              {playerScore} pts
+            </span>
+          </div>
+          <div className="w-full h-1.5 sm:h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+            <motion.div
+              className="h-full bg-blue-600 rounded-full"
+              initial={false}
+              animate={{ width: `${myProgressPct}%` }}
+              transition={{ duration: prefersReducedMotion ? 0 : 0.3, ease: 'easeOut' }}
+            />
           </div>
         </div>
 
         {/* OPPONENT Card */}
-        <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-1.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase truncate max-w-[90px]">{opponent?.displayName || 'Opponent'}</span>
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 font-mono">
-                {Math.min(questions.length, opponentProgress.progressIndex)}/{questions.length}
-              </span>
-              <span className="text-xs font-bold text-slate-900 dark:text-white font-mono">{opponentProgress.score} pts</span>
-            </div>
+        <div className="min-w-0 p-2.5 sm:p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-purple-200/80 dark:border-purple-900/50 space-y-1.5 sm:space-y-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+            <img
+              src={getUserAvatarUrl(opponent || {})}
+              alt={opponent?.displayName || 'Opponent'}
+              className="w-5 h-5 sm:w-7 sm:h-7 rounded-full object-cover border border-purple-400/60 shrink-0 bg-slate-200 dark:bg-slate-700"
+            />
+            <span className="text-[11px] sm:text-xs font-bold text-purple-600 dark:text-purple-400 uppercase truncate">
+              {opponent?.displayName || 'Opponent'}
+            </span>
           </div>
-          <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-purple-600 transition-all duration-300 rounded-full" 
-              style={{ width: `${Math.min(100, (opponentProgress.progressIndex / (questions.length || 1)) * 100)}%` }}
-            ></div>
+          <div className="flex items-center justify-between gap-1">
+            <span className="text-[11px] sm:text-xs font-semibold text-slate-500 dark:text-slate-400 font-mono">
+              {Math.min(questions.length, opponentProgress.progressIndex)}/{questions.length}
+            </span>
+            <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white font-mono">
+              {opponentProgress.score} pts
+            </span>
+          </div>
+          <div className="w-full h-1.5 sm:h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+            <motion.div
+              className="h-full bg-purple-600 rounded-full"
+              initial={false}
+              animate={{ width: `${oppProgressPct}%` }}
+              transition={{ duration: prefersReducedMotion ? 0 : 0.3, ease: 'easeOut' }}
+            />
           </div>
         </div>
       </div>
 
-      {/* Question Card */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 sm:p-8 rounded-xl shadow-xs flex-1 flex flex-col justify-center">
-        <h2 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-white leading-relaxed">
-          {questions[currentIndex].questionText}
-        </h2>
-      </div>
-
-      {/* Answer Options Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {questions[currentIndex].options.map((opt, idx) => {
-          const isSelected = selectedOption === idx;
-          const isEvaluated = answerFeedback !== null && answerFeedback.questionIndex === currentIndex;
-          const isCorrectOption = isEvaluated && answerFeedback.correctOption === idx;
-          const isWrongSelection = isEvaluated && isSelected && !answerFeedback.isCorrect;
-
-          let btnStyle = 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800';
-          let badgeStyle = 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400';
-
-          if (isEvaluated) {
-            if (isSelected) {
-              if (answerFeedback.isCorrect) {
-                btnStyle = 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 font-semibold ring-1 ring-emerald-500/30';
-                badgeStyle = 'bg-emerald-100 dark:bg-emerald-900/40 border-emerald-500 text-emerald-700 dark:text-emerald-300';
-              } else {
-                btnStyle = 'border-rose-500 bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 font-semibold ring-1 ring-rose-500/30';
-                badgeStyle = 'bg-rose-100 dark:bg-rose-900/40 border-rose-500 text-rose-700 dark:text-rose-300';
-              }
-            } else if (isCorrectOption) {
-              // Highlight the actual correct option in emerald if candidate selected wrong
-              btnStyle = 'border-emerald-400 dark:border-emerald-600 bg-emerald-50/60 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-200 ring-1 ring-emerald-500/20';
-              badgeStyle = 'bg-emerald-100 dark:bg-emerald-900/40 border-emerald-500 text-emerald-700 dark:text-emerald-300';
-            } else {
-              btnStyle = 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40 text-slate-400 opacity-50';
-            }
-          } else if (selectedOption !== null && isSelected) {
-            // Selected, waiting for server evaluation
-            btnStyle = 'border-blue-500 bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-300 font-semibold ring-1 ring-blue-500/30';
-            badgeStyle = 'bg-blue-100 dark:bg-blue-900/40 border-blue-500 text-blue-700 dark:text-blue-300';
-          } else if (selectedOption !== null) {
-            btnStyle = 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40 text-slate-400 opacity-50';
-          }
-
-          return (
-            <button
-              key={idx}
-              onClick={() => handleAnswerSubmit(idx)}
-              disabled={selectedOption !== null || isSubmittingAnswer}
-              className={`min-h-[58px] p-4 rounded-xl border text-left text-sm transition-all duration-150 flex items-center justify-between cursor-pointer disabled:cursor-default shadow-xs ${btnStyle}`}
-            >
-              <div className="flex items-center gap-3 pr-2">
-                <span className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg border flex items-center justify-center font-bold text-xs shrink-0 ${badgeStyle}`}>
-                  {PREFIXES[idx]}
+      {/* Question Card & Answer Options */}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={currentIndex}
+          initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -8 }}
+          transition={{ duration: prefersReducedMotion ? 0.08 : 0.18, ease: 'easeOut' }}
+          className="flex flex-col gap-3 sm:gap-4"
+        >
+          {/* Question Card (content-based height, no vertical stretching) */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 sm:p-6 lg:p-7 rounded-xl shadow-xs">
+            <div className="flex items-center justify-between gap-2 mb-2.5">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                Question {currentIndex + 1}
+              </span>
+              {currentQuestion.difficulty && (
+                <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                  {currentQuestion.difficulty}
                 </span>
-                <span className="leading-snug text-slate-900 dark:text-white font-medium">{opt}</span>
-              </div>
-
-              {isEvaluated && (
-                <div className="shrink-0 ml-2">
-                  {isCorrectOption ? (
-                    <FaCircleCheck className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600 dark:text-emerald-400" />
-                  ) : isWrongSelection ? (
-                    <FaCircleXmark className="w-4 h-4 sm:w-5 sm:h-5 text-rose-600 dark:text-rose-400" />
-                  ) : null}
-                </div>
               )}
-            </button>
-          );
-        })}
-      </div>
+            </div>
+            <h2 className="text-[17px] sm:text-lg lg:text-xl font-semibold text-slate-900 dark:text-white leading-relaxed break-words">
+              {currentQuestion.questionText}
+            </h2>
+          </div>
+
+          {/* Answer Options Grid */}
+          <div className={`grid gap-2.5 sm:gap-3 ${hasLongOptions || currentQuestion.options.length !== 4 ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'}`}>
+            {currentQuestion.options.map((opt, idx) => {
+              const isSelected = selectedOption === idx;
+              const isEvaluated = answerFeedback !== null && answerFeedback.questionIndex === currentIndex;
+              const isCorrectOption = isEvaluated && answerFeedback.correctOption === idx;
+              const isWrongSelection = isEvaluated && isSelected && !answerFeedback.isCorrect;
+
+              let btnStyle = 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:border-blue-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800/80';
+              let badgeStyle = 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300';
+
+              if (isEvaluated) {
+                if (isSelected) {
+                  if (answerFeedback.isCorrect) {
+                    btnStyle = 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 font-semibold ring-1 ring-emerald-500/30';
+                    badgeStyle = 'bg-emerald-100 dark:bg-emerald-900/50 border-emerald-500 text-emerald-700 dark:text-emerald-300';
+                  } else {
+                    btnStyle = 'border-rose-500 bg-rose-50 dark:bg-rose-950/40 text-rose-900 dark:text-rose-200 font-semibold ring-1 ring-rose-500/30';
+                    badgeStyle = 'bg-rose-100 dark:bg-rose-900/50 border-rose-500 text-rose-700 dark:text-rose-300';
+                  }
+                } else if (isCorrectOption) {
+                  btnStyle = 'border-emerald-400 dark:border-emerald-600 bg-emerald-50/70 dark:bg-emerald-950/30 text-emerald-900 dark:text-emerald-200 ring-1 ring-emerald-500/20';
+                  badgeStyle = 'bg-emerald-100 dark:bg-emerald-900/50 border-emerald-500 text-emerald-700 dark:text-emerald-300';
+                } else {
+                  btnStyle = 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40 text-slate-400 opacity-55';
+                }
+              } else if (selectedOption !== null && isSelected) {
+                btnStyle = 'border-blue-500 bg-blue-50 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200 font-semibold ring-1 ring-blue-500/30';
+                badgeStyle = 'bg-blue-100 dark:bg-blue-900/50 border-blue-500 text-blue-700 dark:text-blue-300';
+              } else if (selectedOption !== null) {
+                btnStyle = 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40 text-slate-400 opacity-55';
+              }
+
+              return (
+                <motion.button
+                  key={idx}
+                  type="button"
+                  whileTap={selectedOption === null && !isSubmittingAnswer && !prefersReducedMotion ? { scale: 0.99 } : undefined}
+                  onClick={() => handleAnswerSubmit(idx)}
+                  disabled={selectedOption !== null || isSubmittingAnswer}
+                  className={`w-full min-h-[56px] px-3.5 py-3 sm:px-4 sm:py-3.5 rounded-xl border text-left text-sm sm:text-[15px] transition-colors duration-150 flex items-center justify-between gap-2 cursor-pointer disabled:cursor-default shadow-xs ${btnStyle}`}
+                >
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <span className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg border flex items-center justify-center font-bold text-xs shrink-0 ${badgeStyle}`}>
+                      {PREFIXES[idx]}
+                    </span>
+                    <span className="leading-snug text-slate-900 dark:text-white font-medium break-words min-w-0">
+                      {opt}
+                    </span>
+                  </div>
+
+                  {isEvaluated && (
+                    <div className="shrink-0 ml-1">
+                      {isCorrectOption ? (
+                        <FaCircleCheck className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600 dark:text-emerald-400" />
+                      ) : isWrongSelection ? (
+                        <FaCircleXmark className="w-4 h-4 sm:w-5 sm:h-5 text-rose-600 dark:text-rose-400" />
+                      ) : null}
+                    </div>
+                  )}
+                </motion.button>
+              );
+            })}
+          </div>
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 };

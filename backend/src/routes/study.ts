@@ -4,6 +4,7 @@ import { AIService } from '../services/AIService';
 import { db } from '../config/firebase';
 import { z } from 'zod';
 import { calculateLevelFromXP, calculateLevelProgress, LevelCalculator, syncMissionsState, processMissionProgress, checkAndUnlockAchievements, updateDailyStreak } from '../utils/gamification';
+import { AssessmentHistoryService } from '../services/AssessmentHistoryService';
 import { calculatePlacementReadiness } from '../utils/readiness';
 import { XpTransactionService } from '../services/XpTransactionService';
 import { PagePublishingService } from '../services/PagePublishingService';
@@ -451,6 +452,24 @@ router.post('/notes/:noteId/complete', verifyToken, async (req: AuthenticatedReq
       // Record base study notes XP transaction
       const studyTxKey = `study_notes_${noteId}_${req.user!.uid}`;
       transaction.set(db.collection('xpTransactions').doc(studyTxKey), baseEval.transaction);
+
+      await AssessmentHistoryService.recordCompletedAssessment({
+        assessmentId: noteId,
+        userId: req.user!.uid,
+        type: 'study_notes',
+        title: noteData.topic ? `Study Test — ${noteData.topic}` : 'Study Cheatsheet Test',
+        category: noteData.category || 'Study Notes',
+        topic: noteData.topic || 'General',
+        difficulty: 'medium',
+        totalQuestions: Array.isArray(noteData.miniQuiz) ? Math.max(1, noteData.miniQuiz.length) : 1,
+        correctAnswers: Array.isArray(noteData.miniQuiz) ? Math.max(1, noteData.miniQuiz.length) : 1,
+        incorrectAnswers: 0,
+        accuracy: 100,
+        score: 100,
+        xpEarned: baseEval.xpEarned,
+        completedAt: new Date().toISOString(),
+        durationSeconds: 0
+      }, transaction);
 
       const isEligible = finalEval.levelAfter >= 3;
       transaction.update(noteRef, { completed: true });
