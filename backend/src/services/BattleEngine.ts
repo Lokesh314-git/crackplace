@@ -169,6 +169,16 @@ export class BattleEngine {
     } catch {
       // Safe ignore
     }
+    try {
+      if (db) {
+        await db.collection('users').doc(userId).set({
+          activeBattleId: battleId,
+          battleStatus: 'active'
+        }, { merge: true });
+      }
+    } catch {
+      // Safe ignore
+    }
   }
 
   private static async clearActiveBattleLock(userId: string): Promise<void> {
@@ -177,21 +187,191 @@ export class BattleEngine {
     } catch {
       // Safe ignore
     }
+    try {
+      if (db) {
+        await db.collection('users').doc(userId).set({
+          activeBattleId: null,
+          battleStatus: 'idle'
+        }, { merge: true });
+      }
+    } catch {
+      // Safe ignore
+    }
   }
 
-  private static async getActiveBattleIdForUser(userId: string): Promise<string | null> {
+  public static async getActiveBattleIdForUser(userId: string): Promise<string | null> {
+    const result = await this.validateAndRecoverActiveBattle(userId);
+    return result.battleId;
+  }
+
+  /**
+   * Validates whether a user is genuinely participating in a live, non-expired battle.
+   * Automatically cleans up stale Redis locks, expired rooms, and outdated Firestore activeBattleId references.
+   */
+  public static async validateAndRecoverActiveBattle(userId: string): Promise<{
+    battleId: string | null;
+    cleanedStaleSession: boolean;
+    battle?: BattleSession;
+  }> {
+    let battleId: string | null = null;
+    let hadFirestoreRef = false;
+
     try {
-      const battleId = await redisClient.get(this.getActiveBattleUserKey(userId));
-      if (!battleId) return null;
-      const existingBattle = await this.getBattle(battleId);
-      if (!existingBattle || existingBattle.concluded || existingBattle.status === 'COMPLETED' || existingBattle.status === 'ABORTED') {
-        await this.clearActiveBattleLock(userId);
-        return null;
-      }
-      return battleId;
+      battleId = await redisClient.get(this.getActiveBattleUserKey(userId));
     } catch {
-      return null;
+      battleId = null;
     }
+
+    if (db) {
+      try {
+        const userDoc = await db.collection('users').doc(userId).get();
+        if (userDoc.exists) {
+          const uData = userDoc.data() || {};
+          const fsBattleId = uData.activeBattleId || uData.currentBattleId || null;
+          if (fsBattleId) {
+            hadFirestoreRef = true;
+            if (!battleId) battleId = fsBattleId;
+          }
+        }
+      } catch {
+        // Non-fatal
+      }
+    }
+
+    if (!battleId) {
+      return { battleId: null, cleanedStaleSession: false };
+    }
+
+    const existingBattle = await this.getBattle(battleId);
+
+    // 1. Missing from Redis -> stale reference
+    if (!existingBattle) {
+      await this.clearActiveBattleLock(userId);
+      if (db) {
+        try {
+          const roomDoc = await db.collection('battleRooms').doc(battleId).get();
+          if (roomDoc.exists) {
+            const rData = roomDoc.data() || {};
+            if (rData.status === 'in-progress' || rData.status === 'ACTIVE') {
+              await db.collection('battleRooms').doc(battleId).update({
+                status: 'expired',
+                completedAt: new Date().toISOString()
+              });
+            }
+          }
+        } catch {
+          // Safe ignore
+        }
+      }
+      return { battleId: null, cleanedStaleSession: true };
+    }
+
+    // 2. Already concluded/completed/aborted or user is not a registered participant
+    const isParticipant = Boolean(existingBattle.players && existingBattle.players[userId]);
+    if (
+      existingBattle.concluded ||
+      existingBattle.status === 'COMPLETED' ||
+      existingBattle.status === 'ABORTED' ||
+      !isParticipant
+    ) {
+      await this.clearActiveBattleLock(userId);
+      return { battleId: null, cleanedStaleSession: true };
+    }
+
+    // 3. Battle time expired -> finalize cleanly and release locks
+    if (existingBattle.battleEndsAt && Date.now() > existingBattle.battleEndsAt + 5000) {
+      try {
+        await this.concludeBattle(battleId, 'timeout');
+      } catch {
+        await this.clearActiveBattleLock(userId);
+      }
+      return { battleId: null, cleanedStaleSession: true };
+    }
+
+    // 4. Verify Firestore battleRooms doc is not completed/expired/cancelled/deleted
+    if (db) {
+      try {
+        const roomDoc = await db.collection('battleRooms').doc(battleId).get();
+        if (roomDoc.exists) {
+          const rData = roomDoc.data() || {};
+          const expMs = rData.expirationTime ? new Date(rData.expirationTime).getTime() : 0;
+          if (
+            rData.status === 'completed' ||
+            rData.status === 'expired' ||
+            rData.status === 'cancelled' ||
+            (expMs > 0 && expMs <= Date.now())
+          ) {
+            await this.clearActiveBattleLock(userId);
+            return { battleId: null, cleanedStaleSession: true };
+          }
+        } else if (hadFirestoreRef) {
+          // User's Firestore activeBattleId pointed to a deleted room
+          await this.deleteBattle(battleId);
+          await this.clearActiveBattleLock(userId);
+          return { battleId: null, cleanedStaleSession: true };
+        }
+      } catch {
+        // Non-fatal
+      }
+    }
+
+    return { battleId, cleanedStaleSession: false, battle: existingBattle };
+  }
+
+  /**
+   * Returns validated active battle session summary for frontend recovery/resume on load.
+   */
+  public static async getValidatedActiveSession(userId: string) {
+    const { battleId, cleanedStaleSession, battle } = await this.validateAndRecoverActiveBattle(userId);
+    if (!battleId || !battle) {
+      return { hasActiveBattle: false, cleanedStaleSession };
+    }
+
+    const me = battle.players[userId];
+    const oppUid = Object.keys(battle.players).find(uid => uid !== userId);
+    const opp = oppUid ? battle.players[oppUid] : null;
+
+    return {
+      hasActiveBattle: true,
+      cleanedStaleSession,
+      battleId: battle.battleId,
+      battleType: battle.battleType,
+      status: battle.status,
+      battleEndsAt: battle.battleEndsAt,
+      currentQuestionIndex: me?.progressIndex || 0,
+      totalQuestions: battle.totalQuestions,
+      playerScore: me?.score || 0,
+      opponent: opp
+        ? {
+            userId: opp.userId,
+            displayName: opp.displayName,
+            level: opp.level,
+            rating: opp.rating,
+            photoURL: opp.photoURL
+          }
+        : null
+    };
+  }
+
+  /**
+   * Explicitly abandon/forfeit an active battle so both players' locks are released immediately.
+   */
+  public static async handleAbandonBattle(userId: string, requestedBattleId?: string): Promise<{ abandoned: boolean; battleId: string | null }> {
+    const { battleId, battle } = await this.validateAndRecoverActiveBattle(userId);
+    const targetId = requestedBattleId || battleId;
+    if (!targetId) {
+      await this.clearActiveBattleLock(userId);
+      return { abandoned: false, battleId: null };
+    }
+
+    const liveBattle = battle || (await this.getBattle(targetId));
+    if (!liveBattle || liveBattle.concluded || liveBattle.status !== 'ACTIVE' || !liveBattle.players[userId]) {
+      await this.clearActiveBattleLock(userId);
+      return { abandoned: false, battleId: null };
+    }
+
+    await this.concludeBattle(targetId, 'forfeit', userId);
+    return { abandoned: true, battleId: targetId };
   }
 
   /**
@@ -342,10 +522,14 @@ export class BattleEngine {
         }
       }
 
-      // 2. Prevent entering queue if already in an active battle
+      // 2. Prevent entering queue if already in a genuinely active battle (auto-cleans stale refs)
       const existingBattleId = await this.getActiveBattleIdForUser(userId);
       if (existingBattleId) {
-        socket.emit('match_error', { message: 'You are already participating in an active battle.' });
+        socket.emit('match_error', {
+          message: 'You are already participating in an active battle.',
+          code: 'ACTIVE_BATTLE_EXISTS',
+          battleId: existingBattleId
+        });
         return;
       }
 
@@ -374,6 +558,17 @@ export class BattleEngine {
 
       // 3. Concurrency-safe atomic matchmaking check & enqueue
       await this.withMatchmakingLock(async () => {
+        // Re-verify inside lock to prevent race conditions from simultaneous requests
+        const raceBattleId = await this.getActiveBattleIdForUser(userId);
+        if (raceBattleId) {
+          socket.emit('match_error', {
+            message: 'You are already participating in an active battle.',
+            code: 'ACTIVE_BATTLE_EXISTS',
+            battleId: raceBattleId
+          });
+          return;
+        }
+
         const rawQueue = await redisClient.smembers(queueKey);
         const now = Date.now();
         const validCandidates: Array<{ raw: string; ticket: any }> = [];
@@ -976,6 +1171,7 @@ export class BattleEngine {
         players: battleSessionPlayers
       };
 
+      await Promise.all(uids.map(uid => this.setActiveBattleLock(uid, roomId)));
       await this.saveBattle(battle);
       await roomRef.update({ status: 'in-progress' });
 
@@ -1412,30 +1608,32 @@ export class BattleEngine {
         }
       };
 
-      // 5. Direct Socket Dispatches
-      try {
-        const sockets = await this.io.of('/battle').in(battleId).fetchSockets();
-        for (const s of sockets) {
-          const sUid = s.data.userId;
-          if (sUid === p2.userId) {
-            s.emit('battle_concluded', p2Payload);
-            s.emit('battle:completed', p2Payload);
-          } else {
-            s.emit('battle_concluded', p1Payload);
-            s.emit('battle:completed', p1Payload);
+      // 5. Direct Socket Dispatches & Room Fallback
+      if (this.io) {
+        try {
+          const sockets = await this.io.of('/battle').in(battleId).fetchSockets();
+          for (const s of sockets) {
+            const sUid = s.data.userId;
+            if (sUid === p2.userId) {
+              s.emit('battle_concluded', p2Payload);
+              s.emit('battle:completed', p2Payload);
+            } else {
+              s.emit('battle_concluded', p1Payload);
+              s.emit('battle:completed', p1Payload);
+            }
           }
+        } catch (sockErr) {
+          logger.warn('Failed to fetch sockets for conclusion dispatch', { battleId, error: String(sockErr) });
         }
-      } catch (sockErr) {
-        logger.warn('Failed to fetch sockets for conclusion dispatch', { battleId, error: String(sockErr) });
-      }
 
-      // 6. Broadcast Room Fallback
-      this.io.of('/battle').to(battleId).emit('battle_concluded', p1Payload);
-      this.io.of('/battle').to(battleId).emit('battle:completed', {
-        ...resultPackage,
-        battleId,
-        status: 'COMPLETED'
-      });
+        // 6. Broadcast Room Fallback
+        this.io.of('/battle').to(battleId).emit('battle_concluded', p1Payload);
+        this.io.of('/battle').to(battleId).emit('battle:completed', {
+          ...resultPackage,
+          battleId,
+          status: 'COMPLETED'
+        });
+      }
 
       logger.info('Battle finalization broadcast completed', { battleId, winnerId: resultPackage.winnerId });
     } finally {

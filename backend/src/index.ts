@@ -1565,6 +1565,28 @@ app.get('/api/auth/battle-room/info/:roomId', verifyToken, async (req: Authentic
   }
 });
 
+// Active Battle Session Validation & Stale Session Recovery
+app.get('/api/auth/battle/active-session', verifyToken, async (req: AuthenticatedRequest, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
+  try {
+    const session = await BattleEngine.getValidatedActiveSession(req.user.uid);
+    res.json(session);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to validate active battle session.', code: 'SERVER_ERROR' });
+  }
+});
+
+// Abandon/Forfeit an Active Battle Session
+app.post('/api/auth/battle/abandon', strictAuthLimiter, verifyToken, async (req: AuthenticatedRequest, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
+  try {
+    const result = await BattleEngine.handleAbandonBattle(req.user.uid, req.body?.battleId);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to abandon battle.', code: 'SERVER_ERROR' });
+  }
+});
+
 app.get('/api/auth/battle/history', verifyToken, async (req: AuthenticatedRequest, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
   try {
@@ -1698,6 +1720,7 @@ matchmakingNamespace.on('connection', (socket) => {
 
   socket.on('leave_lobby', async () => {
     await BattleEngine.leaveMatchmaking(socket);
+    socket.emit('match_cancelled', { status: 'cancelled' });
   });
 
   socket.on('disconnect', async () => {
@@ -1739,6 +1762,15 @@ battleNamespace.on('connection', (socket) => {
   socket.on('submit_answer', async (data: { battleId: string; questionIndex: number; selectedOption: number }) => {
     if (!socketRateLimit(socket, 8)) return;
     await BattleEngine.submitAnswer(socket, data);
+  });
+
+  socket.on('abandon_battle', async (data?: { battleId?: string }) => {
+    if (!socketRateLimit(socket, 5)) return;
+    const uid = socket.data.userId;
+    const targetId = data?.battleId || socket.data.battleId;
+    if (uid) {
+      await BattleEngine.handleAbandonBattle(uid, targetId);
+    }
   });
 
   socket.on('get_battle_state', async (data: { battleId?: string }) => {

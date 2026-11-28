@@ -66,6 +66,19 @@ export const Battle: React.FC = () => {
   const [loungeTab, setLoungeTab] = useState<'quick' | 'friend'>('quick');
   const [customSubTab, setCustomSubTab] = useState<'create' | 'join'>('create');
   const [status, setStatus] = useState<'lounge' | 'searching' | 'match_ready' | 'lobby' | 'battle' | 'concluded'>('lounge');
+  const [matchmakingState, setMatchmakingState] = useState<
+    'idle' | 'checking_session' | 'searching' | 'matched' | 'battle_active' | 'cancelling' | 'cancelled' | 'completed' | 'error'
+  >('idle');
+  const [matchError, setMatchError] = useState<string | null>(null);
+  const [activeSession, setActiveSession] = useState<{
+    battleId: string;
+    battleType?: string;
+    opponent?: Opponent | null;
+    currentQuestionIndex?: number;
+    totalQuestions?: number;
+    playerScore?: number;
+  } | null>(null);
+  const [isAbandoningBattle, setIsAbandoningBattle] = useState(false);
   const [searchStatusMsg, setSearchStatusMsg] = useState('Searching for opponents...');
   const [searchElapsedSeconds, setSearchElapsedSeconds] = useState(0);
   const isSearchingRef = useRef(false);
@@ -187,6 +200,40 @@ export const Battle: React.FC = () => {
     return (import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || window.location.origin).replace(/\/$/, '');
   };
 
+  // Automatic Stale Session Recovery & Active Battle Detection on load
+  useEffect(() => {
+    if (!token || !userProfile?.uid || roomQuery || status !== 'lounge') return;
+    let cancelled = false;
+
+    const checkSession = async () => {
+      try {
+        const res = await fetch('/api/auth/battle/active-session', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (cancelled) return;
+        if (data.hasActiveBattle && data.battleId) {
+          setActiveSession({
+            battleId: data.battleId,
+            battleType: data.battleType,
+            opponent: data.opponent || null,
+            currentQuestionIndex: data.currentQuestionIndex,
+            totalQuestions: data.totalQuestions,
+            playerScore: data.playerScore
+          });
+        } else {
+          setActiveSession(null);
+        }
+      } catch {
+        // Non-fatal
+      }
+    };
+
+    checkSession();
+    return () => { cancelled = true; };
+  }, [token, userProfile?.uid, roomQuery, status]);
+
   // Elapsed timer while searching in Quick Match queue
   useEffect(() => {
     if (status !== 'searching') {
@@ -199,32 +246,87 @@ export const Battle: React.FC = () => {
     return () => clearInterval(timer);
   }, [status]);
 
-  // 1. Join matchmaking queue (Strictly Quantitative Aptitude)
-  const handleStartSearch = () => {
-    if (isSearchingRef.current || status === 'searching') return;
+  // 1. Join matchmaking queue (Strictly Quantitative Aptitude) with pre-flight session validation
+  const handleStartSearch = async () => {
+    if (
+      isSearchingRef.current ||
+      matchmakingState === 'checking_session' ||
+      matchmakingState === 'searching' ||
+      matchmakingState === 'matched' ||
+      status === 'searching' ||
+      status === 'match_ready' ||
+      status === 'battle'
+    ) {
+      return;
+    }
+
     isSearchingRef.current = true;
     searchCancelledRef.current = false;
+    setMatchError(null);
+    setMatchmakingState('checking_session');
 
+    // Pre-flight backend validation & stale session recovery
+    try {
+      const checkRes = await fetch('/api/auth/battle/active-session', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (checkRes.ok) {
+        const sessionData = await checkRes.json();
+        if (searchCancelledRef.current) {
+          isSearchingRef.current = false;
+          setMatchmakingState('idle');
+          return;
+        }
+        if (sessionData.hasActiveBattle && sessionData.battleId) {
+          isSearchingRef.current = false;
+          setActiveSession({
+            battleId: sessionData.battleId,
+            battleType: sessionData.battleType,
+            opponent: sessionData.opponent || null,
+            currentQuestionIndex: sessionData.currentQuestionIndex,
+            totalQuestions: sessionData.totalQuestions,
+            playerScore: sessionData.playerScore
+          });
+          setMatchError('You are already participating in an active battle. Resume or abandon it below.');
+          setMatchmakingState('error');
+          setStatus('lounge');
+          return;
+        }
+        setActiveSession(null);
+      }
+    } catch {
+      // Proceed to socket check if pre-flight endpoint is unreachable; socket enforces server-side too
+    }
+
+    if (searchCancelledRef.current) {
+      isSearchingRef.current = false;
+      setMatchmakingState('idle');
+      return;
+    }
+
+    setMatchmakingState('searching');
     setStatus('searching');
     setSearchElapsedSeconds(0);
     setSearchStatusMsg('Connecting to Quantitative Aptitude matchmaking...');
-    
+
     // Clean any stale socket before opening a new one
     if (matchmakingSocket.current) {
+      matchmakingSocket.current.removeAllListeners();
       matchmakingSocket.current.disconnect();
       matchmakingSocket.current = null;
     }
 
     // Connect to matchmaking namespace with Firebase Auth token
-    matchmakingSocket.current = io(`${getSocketUrl()}/matchmaking`, {
+    const socket = io(`${getSocketUrl()}/matchmaking`, {
       transports: ['websocket'],
       auth: { token }
     });
+    matchmakingSocket.current = socket;
 
-    matchmakingSocket.current.on('connect', () => {
+    socket.on('connect', () => {
       if (searchCancelledRef.current) return;
       setSearchStatusMsg('Searching for an Aptitude competitor...');
-      matchmakingSocket.current?.emit('join_lobby', {
+      socket.emit('join_lobby', {
         battleType: QUICK_MATCH_SUBJECT,
         rating: userProfile?.battleRating || 1000,
         profile: {
@@ -239,21 +341,46 @@ export const Battle: React.FC = () => {
       });
     });
 
-    matchmakingSocket.current.on('match_status', (data: { message: string }) => {
+    socket.on('connect_error', (err: any) => {
+      if (searchCancelledRef.current) return;
+      isSearchingRef.current = false;
+      socket.removeAllListeners();
+      socket.disconnect();
+      if (matchmakingSocket.current === socket) matchmakingSocket.current = null;
+      setMatchError(err?.message || 'Unable to connect to matchmaking server. Please try again.');
+      setMatchmakingState('error');
+      setStatus('lounge');
+      setSearchElapsedSeconds(0);
+    });
+
+    socket.on('disconnect', () => {
+      if (searchCancelledRef.current || statusRef.current !== 'searching') return;
+      isSearchingRef.current = false;
+      if (matchmakingSocket.current === socket) matchmakingSocket.current = null;
+      setMatchError('Matchmaking connection was interrupted. Please try again.');
+      setMatchmakingState('error');
+      setStatus('lounge');
+      setSearchElapsedSeconds(0);
+    });
+
+    socket.on('match_status', (data: { message: string }) => {
       if (!searchCancelledRef.current) {
         setSearchStatusMsg(data.message);
       }
     });
 
-    matchmakingSocket.current.on('match_found', (data: { battleId: string; opponent: Opponent; quiz: QuizQuestion[] }) => {
-      // Ignore late match_found if user already cancelled search
+    socket.on('match_found', (data: { battleId: string; opponent: Opponent; quiz: QuizQuestion[] }) => {
       if (searchCancelledRef.current) {
-        matchmakingSocket.current?.disconnect();
-        matchmakingSocket.current = null;
+        socket.removeAllListeners();
+        socket.disconnect();
+        if (matchmakingSocket.current === socket) matchmakingSocket.current = null;
         return;
       }
 
       isSearchingRef.current = false;
+      setMatchmakingState('matched');
+      setActiveSession(null);
+      setMatchError(null);
       setBattleId(data.battleId);
       setOpponent(data.opponent);
       setQuestions(data.quiz);
@@ -264,46 +391,118 @@ export const Battle: React.FC = () => {
       currentIndexRef.current = 0;
 
       // Clean matchmaking socket
-      matchmakingSocket.current?.disconnect();
-      matchmakingSocket.current = null;
+      socket.removeAllListeners();
+      socket.disconnect();
+      if (matchmakingSocket.current === socket) matchmakingSocket.current = null;
 
       // Show brief Opponent Found preparation card before entering synchronized combat
       setStatus('match_ready');
       setTimeout(() => {
         if (!searchCancelledRef.current) {
+          setMatchmakingState('battle_active');
           setStatus('battle');
         }
       }, 1600);
     });
 
-    matchmakingSocket.current.on('match_error', (data: { message: string }) => {
+    socket.on('match_error', (data: { message: string; code?: string; battleId?: string }) => {
       isSearchingRef.current = false;
-      alert(data.message);
-      handleCancelSearch();
+      searchCancelledRef.current = true;
+      socket.removeAllListeners();
+      socket.disconnect();
+      if (matchmakingSocket.current === socket) matchmakingSocket.current = null;
+
+      if (data.code === 'ACTIVE_BATTLE_EXISTS' && data.battleId) {
+        setActiveSession({ battleId: data.battleId });
+      }
+      setMatchError(data.message || 'Matchmaking error occurred.');
+      setMatchmakingState('error');
+      setStatus('lounge');
+      setSearchElapsedSeconds(0);
     });
   };
 
   const handleCancelSearch = () => {
+    // Prevent cancelling an already confirmed match or active battle
+    if (matchmakingState === 'matched' || status === 'match_ready' || status === 'battle') {
+      return;
+    }
+
+    setMatchmakingState('cancelling');
     searchCancelledRef.current = true;
     isSearchingRef.current = false;
+
     if (matchmakingSocket.current) {
       matchmakingSocket.current.emit('leave_lobby', { userId: userProfile?.uid });
+      matchmakingSocket.current.removeAllListeners();
       matchmakingSocket.current.disconnect();
       matchmakingSocket.current = null;
     }
+
     setStatus('lounge');
     setSearchElapsedSeconds(0);
     setSearchParams({});
     setPlayerScore(0);
     setPlayerCompletedQuestions(0);
     setOpponentProgress({ progressIndex: 0, score: 0, finished: false });
+    setMatchmakingState('idle');
+  };
+
+  const handleResumeActiveBattle = () => {
+    if (!activeSession?.battleId) return;
+    setMatchError(null);
+    setBattleId(activeSession.battleId);
+    setSearchParams({ room: activeSession.battleId });
+    setMatchmakingState('battle_active');
+    setStatus('battle');
+  };
+
+  const handleAbandonActiveBattle = async (targetBattleId?: string) => {
+    const idToAbandon = targetBattleId || activeSession?.battleId || battleId;
+    setIsAbandoningBattle(true);
+    try {
+      if (battleSocket.current && idToAbandon) {
+        battleSocket.current.emit('abandon_battle', { battleId: idToAbandon });
+      }
+      await fetch('/api/auth/battle/abandon', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ battleId: idToAbandon })
+      });
+    } catch {
+      // Non-fatal
+    } finally {
+      setIsAbandoningBattle(false);
+      setActiveSession(null);
+      setMatchError(null);
+      setMatchmakingState('idle');
+      if (battleSocket.current) {
+        battleSocket.current.disconnect();
+        battleSocket.current = null;
+      }
+      setBattleId(null);
+      setStatus('lounge');
+      setSearchParams({});
+      setPlayerScore(0);
+      setPlayerCompletedQuestions(0);
+      setOpponentProgress({ progressIndex: 0, score: 0, finished: false });
+    }
   };
 
   const handleLeaveLobby = () => {
+    if (status === 'battle' && battleId) {
+      void handleAbandonActiveBattle(battleId);
+      return;
+    }
     if (battleSocket.current) {
       battleSocket.current.disconnect();
       battleSocket.current = null;
     }
+    setBattleId(null);
+    setMatchmakingState('idle');
     setStatus('lounge');
     setSearchParams({});
     setPlayerScore(0);
@@ -542,6 +741,9 @@ export const Battle: React.FC = () => {
       }
 
       setBattleResult(normalized);
+      setActiveSession(null);
+      setMatchError(null);
+      setMatchmakingState('completed');
       setStatus('concluded');
       statusRef.current = 'concluded';
       setBattleAlert(null);
@@ -1025,13 +1227,56 @@ export const Battle: React.FC = () => {
                   </div>
                 </div>
 
+                {activeSession && (
+                  <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="space-y-0.5 text-xs">
+                      <p className="font-bold text-amber-900 dark:text-amber-200">
+                        Active Battle Session Found
+                      </p>
+                      <p className="text-amber-800/90 dark:text-amber-300/90">
+                        You have an ongoing match{activeSession.opponent?.displayName ? ` vs ${activeSession.opponent.displayName}` : ''}. Resume or abandon it to start a new search.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={handleResumeActiveBattle}
+                        className="px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold cursor-pointer transition-colors"
+                      >
+                        Resume Battle
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleAbandonActiveBattle(activeSession.battleId)}
+                        disabled={isAbandoningBattle}
+                        className="px-3.5 py-2 rounded-lg bg-white dark:bg-slate-900 border border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-semibold cursor-pointer disabled:opacity-50 transition-colors"
+                      >
+                        {isAbandoningBattle ? 'Abandoning...' : 'Abandon'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {matchError && (
+                  <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/70 text-rose-700 dark:text-rose-300 text-xs flex items-center justify-between gap-2">
+                    <span>{matchError}</span>
+                    <button
+                      type="button"
+                      onClick={() => { setMatchError(null); if (matchmakingState === 'error') setMatchmakingState('idle'); }}
+                      className="text-rose-500 hover:text-rose-700 dark:hover:text-rose-200 font-bold shrink-0 cursor-pointer"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                )}
+
                 <button
                   onClick={handleStartSearch}
-                  disabled={isSearchingRef.current}
+                  disabled={matchmakingState === 'checking_session' || matchmakingState === 'searching' || matchmakingState === 'matched'}
                   className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold text-sm tracking-wide text-white shadow-xs transition-all duration-200 cursor-pointer flex items-center justify-center gap-2"
                 >
                   <FaPlay className="w-3.5 h-3.5" />
-                  <span>Find Competitor</span>
+                  <span>{matchmakingState === 'checking_session' ? 'Validating Session...' : 'Find Competitor'}</span>
                 </button>
               </>
             ) : (
@@ -1726,6 +1971,9 @@ export const Battle: React.FC = () => {
 
         <button
           onClick={() => {
+            setMatchmakingState('idle');
+            setActiveSession(null);
+            setMatchError(null);
             setStatus('lounge');
             setSearchParams({});
             setBattleId(null);
