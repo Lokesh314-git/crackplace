@@ -1,5 +1,7 @@
 import { db } from '../config/firebase';
 import { XpTransactionRecord } from '../game/scoring/levelCalculator';
+import { SeasonService } from './SeasonService';
+import { invalidateLeaderboardCache } from './leaderboardCleanup';
 
 // In-memory cache for ultra-fast deduplication
 const processedRewardsCache = new Map<string, XpTransactionRecord>();
@@ -49,9 +51,11 @@ export class XpTransactionService {
     firestoreTransactionOrBatch?: any
   ): Promise<void> {
     const key = this.getIdempotencyKey(record.source, record.referenceId, record.userId);
-    const sanitizedRecord: XpTransactionRecord = {
+    const currentSeason = SeasonService.getSeasonBoundaries();
+    const sanitizedRecord: XpTransactionRecord & { seasonId?: string } = {
       ...record,
       id: key,
+      seasonId: (record as any).seasonId || currentSeason.seasonId,
       createdAt: record.createdAt || new Date().toISOString()
     };
 
@@ -85,6 +89,11 @@ export class XpTransactionService {
       } catch (err) {
         console.warn(`[XpTransactionService] Failed to persist transaction record to Firestore:`, err);
       }
+    }
+
+    // Refresh leaderboard caches when verified XP is awarded
+    if (record.xpEarned > 0) {
+      void invalidateLeaderboardCache();
     }
   }
 

@@ -1,14 +1,14 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
-import { FaCrown, FaMagnifyingGlass, FaArrowRotateRight, FaCircleExclamation, FaTrophy, FaLock, FaRegClock, FaBolt, FaGraduationCap, FaBuilding, FaUsers, FaStar } from 'react-icons/fa6';
+import { FaCrown, FaMagnifyingGlass, FaArrowRotateRight, FaCircleExclamation, FaTrophy, FaLock, FaRegClock, FaBolt, FaGraduationCap } from 'react-icons/fa6';
 import { getUserAvatarUrl, getAvatarImageUrl, SYSTEM_DEFAULT_AVATAR_VISUAL } from '../utils/avatarResolver';
 import { checkIsLegendaryPlayer } from '../config/cosmetics';
 import { ProfilePreviewModal } from '../components/profile/ProfilePreviewModal';
 import type { ProfilePreviewData } from '../components/profile/ProfilePreviewModal';
 import { calculateLevelFromXP } from '../utils/levelCalculator';
 
-export type LeaderboardTab = 'weekly' | 'global' | 'elo' | 'college' | 'department' | 'friends';
+export type LeaderboardTab = 'weekly' | 'global' | 'college';
 
 interface LeaderboardUser {
   uid: string;
@@ -328,27 +328,21 @@ export const Leaderboards: React.FC = () => {
           <h1 className="text-2xl sm:text-3xl font-bold text-text-primary tracking-tight mt-1">
             {tab === 'weekly' && 'Weekly Leaderboard'}
             {tab === 'global' && 'All-Time Leaderboard'}
-            {tab === 'elo' && 'Competitive Elo Rankings'}
             {tab === 'college' && 'College Rankings'}
-            {tab === 'department' && 'Department Rankings'}
-            {tab === 'friends' && 'Friends Rankings'}
           </h1>
           <p className="text-text-secondary text-sm mt-0.5">
-            {tab === 'weekly' && 'Weekly sprint contenders ranked by practice XP earned since Monday.'}
-            {tab === 'global' && 'All-time placement candidates ranked by total XP earned across all activities.'}
-            {tab === 'elo' && 'Top competitive battlers ranked by 1v1 Arena Elo rating.'}
-            {tab === 'college' && (userProfile?.college ? `Top contenders from ${userProfile.college} ranked by total XP.` : 'Top contenders ranked by college affiliation.')}
-            {tab === 'department' && (userProfile?.department ? `Top contenders from ${userProfile.department} department ranked by total XP.` : 'Top contenders ranked by department affiliation.')}
-            {tab === 'friends' && 'Private standings comparing your standings directly against your friends and recruits.'}
+            {tab === 'weekly' && 'Weekly sprint contenders ranked by verified XP earned since Monday.'}
+            {tab === 'global' && 'All-time placement candidates ranked by cumulative verified XP.'}
+            {tab === 'college' && (userProfile?.college ? `Top contenders from ${userProfile.college} ranked by cumulative XP.` : 'Top contenders ranked by verified college affiliation.')}
           </p>
         </div>
 
         {/* Tab & Refresh selector */}
         <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5 bg-surface-dark border border-border-dark p-1.5 rounded-xl shadow-xs w-full sm:w-auto">
+          <div className="grid grid-cols-3 gap-1.5 bg-surface-dark border border-border-dark p-1.5 rounded-xl shadow-xs w-full sm:w-auto">
             <button
               onClick={() => setTab('weekly')}
-              className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                 tab === 'weekly' 
                   ? 'bg-brand-600 text-white shadow-xs font-bold' 
                   : 'text-text-muted hover:text-text-primary hover:bg-surface-elevated/40'
@@ -359,7 +353,7 @@ export const Leaderboards: React.FC = () => {
             </button>
             <button
               onClick={() => setTab('global')}
-              className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                 tab === 'global' 
                   ? 'bg-brand-600 text-white shadow-xs font-bold' 
                   : 'text-text-muted hover:text-text-primary hover:bg-surface-elevated/40'
@@ -369,48 +363,15 @@ export const Leaderboards: React.FC = () => {
               <span>All-Time</span>
             </button>
             <button
-              onClick={() => setTab('elo')}
-              className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                tab === 'elo' 
-                  ? 'bg-brand-600 text-white shadow-xs font-bold' 
-                  : 'text-text-muted hover:text-text-primary hover:bg-surface-elevated/40'
-              }`}
-            >
-              <FaStar className="w-3.5 h-3.5 text-yellow-400" />
-              <span>Competitive</span>
-            </button>
-            <button
               onClick={() => setTab('college')}
-              className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                 tab === 'college' 
-                  ? 'bg-brand-600 text-white shadow-xs' 
+                  ? 'bg-brand-600 text-white shadow-xs font-bold' 
                   : 'text-text-muted hover:text-text-primary hover:bg-surface-elevated/40'
               }`}
             >
               <FaGraduationCap className="w-3.5 h-3.5 text-indigo-400" />
               <span>College</span>
-            </button>
-            <button
-              onClick={() => setTab('department')}
-              className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                tab === 'department' 
-                  ? 'bg-brand-600 text-white shadow-xs' 
-                  : 'text-text-muted hover:text-text-primary hover:bg-surface-elevated/40'
-              }`}
-            >
-              <FaBuilding className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Department</span>
-            </button>
-            <button
-              onClick={() => setTab('friends')}
-              className={`col-span-2 sm:col-span-1 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                tab === 'friends' 
-                  ? 'bg-brand-600 text-white shadow-xs' 
-                  : 'text-text-muted hover:text-text-primary hover:bg-surface-elevated/40'
-              }`}
-            >
-              <FaUsers className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Friends</span>
             </button>
           </div>
 
@@ -430,36 +391,10 @@ export const Leaderboards: React.FC = () => {
         <div className="p-3.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs flex items-center justify-between shadow-xs">
           <div className="flex items-center gap-2">
             <FaGraduationCap className="w-4 h-4 shrink-0 text-indigo-400" />
-            <span>Set your <strong>College</strong> in Profile Settings to filter standings for your campus.</span>
+            <span>Set your <strong>College</strong> in Profile Settings to view standings for your campus.</span>
           </div>
           <Link to="/profile" className="px-2.5 py-1 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 font-semibold text-indigo-200 transition-colors">
             Edit Profile
-          </Link>
-        </div>
-      )}
-
-      {/* Department affiliation guidance banner */}
-      {tab === 'department' && !userProfile?.department && (
-        <div className="p-3.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-xs flex items-center justify-between shadow-xs">
-          <div className="flex items-center gap-2">
-            <FaBuilding className="w-4 h-4 shrink-0 text-cyan-400" />
-            <span>Set your <strong>Department</strong> in Profile Settings to filter standings for your department.</span>
-          </div>
-          <Link to="/profile" className="px-2.5 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 font-semibold text-cyan-200 transition-colors">
-            Edit Profile
-          </Link>
-        </div>
-      )}
-
-      {/* Friends private leaderboard guidance banner */}
-      {tab === 'friends' && ranks.length <= 1 && (
-        <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs flex items-center justify-between shadow-xs">
-          <div className="flex items-center gap-2">
-            <FaUsers className="w-4 h-4 shrink-0 text-emerald-400" />
-            <span>Invite your friends or recruits to compare standings on your private friends leaderboard!</span>
-          </div>
-          <Link to="/invite" className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 font-semibold text-emerald-200 transition-colors">
-            Invite Friends
           </Link>
         </div>
       )}
@@ -561,18 +496,12 @@ export const Leaderboards: React.FC = () => {
           <div className="space-y-1">
             <h3 className="font-bold text-base text-text-primary">
               {tab === 'college' ? 'No College Contenders Yet' :
-               tab === 'department' ? 'No Department Contenders Yet' :
-               tab === 'friends' ? 'No Friends Ranked Yet' :
                tab === 'weekly' ? 'No Weekly Contenders Yet' :
                'No Ranked Candidates Yet'}
             </h3>
             <p className="text-xs text-text-muted max-w-sm mx-auto leading-relaxed">
-              {tab === 'friends' 
-                ? 'Invite friends using your invite code to start competing on your private leaderboard.' 
-                : tab === 'college'
+              {tab === 'college'
                 ? 'Be the first from your college to claim a spot on the campus leaderboard by practicing or battling!'
-                : tab === 'department'
-                ? 'Be the first from your department to claim a spot on the leaderboard by practicing or battling!'
                 : 'Complete a 1v1 battle, coding challenge, or practice quiz to claim the #1 spot on the leaderboard!'}
             </p>
           </div>
@@ -708,9 +637,9 @@ export const Leaderboards: React.FC = () => {
                   </div>
                 </div>
                 <div className={`font-bold text-sm font-mono text-right ${isLegendary ? 'text-yellow-400' : 'text-brand-400'}`}>
-                  {tab === 'elo' ? `${userElo} Elo` : tab === 'weekly' ? `${userWeeklyXp} XP` : `${userTotalXp} XP`}
+                  {tab === 'weekly' ? `${userWeeklyXp} XP` : `${userTotalXp} XP`}
                   <span className="text-[10px] text-text-muted block font-normal">
-                    {tab === 'elo' ? `${userTotalXp} XP` : `${userElo} Elo`}
+                    {userElo} Elo
                   </span>
                 </div>
               </div>
@@ -726,9 +655,9 @@ export const Leaderboards: React.FC = () => {
               </div>
               <div className="flex items-center gap-8 pr-2">
                 <span className="hidden sm:inline">
-                  {tab === 'weekly' ? 'Weekly XP' : tab === 'elo' ? 'Experience' : 'Total XP'}
+                  {tab === 'weekly' ? 'Weekly XP' : 'Total XP'}
                 </span>
-                <span>Rating</span>
+                <span>Elo</span>
               </div>
             </div>
 
@@ -776,7 +705,7 @@ export const Leaderboards: React.FC = () => {
                     <span className="text-text-muted font-mono hidden sm:inline">
                       {tab === 'weekly' ? `${user.weeklyXp || 0} XP` : `${user.xp || user.totalXp || 0} XP`}
                     </span>
-                    <span className={`font-bold font-mono ${tab === 'elo' ? 'text-brand-400' : 'text-text-primary'}`}>
+                    <span className="font-bold font-mono text-text-primary">
                       {user.battleRating} Elo
                     </span>
                   </div>
@@ -824,7 +753,7 @@ export const Leaderboards: React.FC = () => {
           rank: selectedUser.rank,
           photoURL: selectedUser.photoURL,
           equippedAvatar: selectedUser.equippedAvatar,
-          xp: tab === 'weekly' ? selectedUser.weeklyXp : selectedUser.xp || selectedUser.totalXp,
+          xp: selectedUser.totalXp || selectedUser.xp,
           college: selectedUser.college || '',
           isLegendaryPlayer: selectedUser.isLegendaryPlayer
         } as Partial<ProfilePreviewData> : undefined}

@@ -443,41 +443,28 @@ app.get('/api/leaderboard', verifyToken, async (req: AuthenticatedRequest, res) 
     });
   }
 
-  const rankingType = String(req.query.type || 'weekly').toLowerCase();
-  const sortByMetric = String(req.query.sortBy || '').toLowerCase();
+  const rawType = String(req.query.type || 'weekly').toLowerCase().trim();
+  const rankingType = (rawType === 'all-time' || rawType === 'alltime') ? 'global' : rawType;
 
-  // Deprecate Daily and Monthly leaderboard categories
-  if (rankingType === 'daily' || rankingType === 'monthly') {
+  // Allow ONLY weekly, global (all-time), and college categories
+  const allowedCategories = new Set(['weekly', 'global', 'college']);
+  if (!allowedCategories.has(rankingType)) {
     return res.status(400).json({
-      error: 'Daily and Monthly leaderboards are no longer supported. Please use weekly, global (all-time), elo, college, department, or friends.',
+      error: `Category "${rawType}" is not supported. Please use weekly, global (all-time), or college.`,
       code: 'INVALID_CATEGORY'
     });
   }
 
-  // Populate friends from referrals if user has referred any users
-  if (rankingType === 'friends') {
-    try {
-      const refSnap = await db.collection('referrals').where('referrerId', '==', callerId).get();
-      if (refSnap && !refSnap.empty) {
-        refSnap.forEach((doc: any) => {
-          const d = doc.data() || {};
-          if (d.referredUserId && !callerFriends.includes(d.referredUserId)) {
-            callerFriends.push(d.referredUserId);
-          }
-        });
-      }
-    } catch {
-      // Safe fallback
-    }
-  }
+  const normalizeCollegeName = (val?: string | null): string => {
+    if (!val || typeof val !== 'string') return '';
+    return val.toLowerCase().trim().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+  };
 
   const limitCount = Math.min(200, Math.max(1, Number(req.query.limit) || 100));
-  const filterCollege = req.query.college ? String(req.query.college).trim() : (rankingType === 'college' ? callerCollege : null);
-  const filterDept = req.query.department ? String(req.query.department).trim() : (rankingType === 'department' ? callerDept : null);
+  const rawFilterCollege = req.query.college ? String(req.query.college).trim() : (rankingType === 'college' ? callerCollege : null);
+  const normalizedFilterCollege = normalizeCollegeName(rawFilterCollege);
 
-  const cacheKey = rankingType === 'friends'
-    ? `leaderboard:friends:${callerId}:${limitCount}${sortByMetric ? `:${sortByMetric}` : ''}`
-    : `leaderboard:${rankingType}:${limitCount}${filterCollege ? `:${filterCollege}` : ''}${filterDept ? `:${filterDept}` : ''}${sortByMetric ? `:${sortByMetric}` : ''}`;
+  const cacheKey = `leaderboard:${rankingType}:${limitCount}${normalizedFilterCollege ? `:${normalizedFilterCollege}` : ''}`;
 
   const wantsObject = req.headers['x-response-format'] === 'object' || req.query.format === 'object';
 
@@ -627,20 +614,21 @@ app.get('/api/leaderboard', verifyToken, async (req: AuthenticatedRequest, res) 
     let rankList = Array.from(userMap.values());
 
     // Apply category filters
-    if (rankingType === 'college' && filterCollege) {
-      const targetCollege = filterCollege.toLowerCase();
-      rankList = rankList.filter(u => u.college && u.college.toLowerCase().includes(targetCollege));
-    } else if (rankingType === 'department' && filterDept) {
-      const targetDept = filterDept.toLowerCase();
-      rankList = rankList.filter(u => u.department && u.department.toLowerCase().includes(targetDept));
-    } else if (rankingType === 'friends') {
-      const allowedFriends = new Set([callerId, ...callerFriends]);
-      rankList = rankList.filter(u => allowedFriends.has(u.uid));
+    if (rankingType === 'college') {
+      if (!normalizedFilterCollege || normalizedFilterCollege.length < 2) {
+        // Exclude users without valid college information from college-specific rankings
+        rankList = [];
+      } else {
+        rankList = rankList.filter(u => {
+          const userNormCollege = normalizeCollegeName(u.college);
+          return userNormCollege.length >= 2 && userNormCollege === normalizedFilterCollege;
+        });
+      }
     }
 
     // Deterministic sorting rules per category metric
     if (rankingType === 'weekly') {
-      // 1. Weekly Sprint: Rank strictly by Weekly XP
+      // 1. Weekly Leaderboard: Rank strictly by Weekly XP
       rankList.sort((a, b) => {
         const diffWeeklyXp = (b.weeklyXp || 0) - (a.weeklyXp || 0);
         if (diffWeeklyXp !== 0) return diffWeeklyXp;
@@ -650,17 +638,8 @@ app.get('/api/leaderboard', verifyToken, async (req: AuthenticatedRequest, res) 
         if (diffElo !== 0) return diffElo;
         return a.uid.localeCompare(b.uid);
       });
-    } else if (rankingType === 'elo' || sortByMetric === 'elo') {
-      // 2. Competitive / Elo Rating: Rank strictly by current Elo
-      rankList.sort((a, b) => {
-        const diffElo = (b.battleRating || 0) - (a.battleRating || 0);
-        if (diffElo !== 0) return diffElo;
-        const diffTotalXp = (b.totalXp || 0) - (a.totalXp || 0);
-        if (diffTotalXp !== 0) return diffTotalXp;
-        return a.uid.localeCompare(b.uid);
-      });
     } else {
-      // 3. All-Time Global, College, Department, and Friends: Rank strictly by Total XP
+      // 2. All-Time Global & College: Rank strictly by cumulative Total XP
       rankList.sort((a, b) => {
         const diffTotalXp = (b.totalXp || 0) - (a.totalXp || 0);
         if (diffTotalXp !== 0) return diffTotalXp;

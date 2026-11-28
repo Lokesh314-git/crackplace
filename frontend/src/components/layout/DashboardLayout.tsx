@@ -20,6 +20,7 @@ import {
   FaRightFromBracket
 } from 'react-icons/fa6';
 import { useAuthStore } from '../../store/authStore';
+import { calculateLevelFromXP } from '../../utils/levelCalculator';
 import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { Modal, Button } from '../ui';
@@ -316,7 +317,7 @@ export const DashboardLayout: React.FC = () => {
                       {userProfile.displayName || 'Candidate'}
                     </p>
                     <p className="text-[10px] text-slate-500">
-                      Level {userProfile.level || 1} • {userProfile.coins || 0} Coins
+                      Level {calculateLevelFromXP(userProfile.xp ?? (userProfile as any).totalXp ?? 0)} • {userProfile.coins || 0} Coins
                     </p>
                   </div>
                   <button
