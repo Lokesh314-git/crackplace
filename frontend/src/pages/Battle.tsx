@@ -20,18 +20,10 @@ import {
 } from 'react-icons/fa6';
 import { getUserAvatarUrl } from '../utils/avatarResolver';
 import type { BattleResult } from '../types';
-import { SUBJECT_LIST, getTopicsForSubject, getSubtopicsForTopic } from '../constants/subjects';
+import { SUBJECT_LIST, getTopicsForSubject } from '../constants/subjects';
 
-const CATEGORIES = [
-  'Aptitude',
-  'DSA',
-  'DBMS',
-  'Operating Systems',
-  'Computer Networks',
-  'Logical Reasoning',
-  'Verbal Ability',
-  'HR & Behavioral'
-];
+const QUICK_MATCH_SUBJECT = 'quantitative_aptitude';
+const QUICK_MATCH_TOPICS = getTopicsForSubject('quantitative_aptitude');
 
 interface QuizQuestion {
   id?: string;
@@ -71,11 +63,13 @@ export const Battle: React.FC = () => {
   const { token, userProfile, updateProfile } = useAuthStore();
 
   // Setup Lounge states
-  const [selectedCategory, setSelectedCategory] = useState('DSA');
   const [loungeTab, setLoungeTab] = useState<'quick' | 'friend'>('quick');
   const [customSubTab, setCustomSubTab] = useState<'create' | 'join'>('create');
-  const [status, setStatus] = useState<'lounge' | 'searching' | 'lobby' | 'battle' | 'concluded'>('lounge');
+  const [status, setStatus] = useState<'lounge' | 'searching' | 'match_ready' | 'lobby' | 'battle' | 'concluded'>('lounge');
   const [searchStatusMsg, setSearchStatusMsg] = useState('Searching for opponents...');
+  const [searchElapsedSeconds, setSearchElapsedSeconds] = useState(0);
+  const isSearchingRef = useRef(false);
+  const searchCancelledRef = useRef(false);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const roomQuery = searchParams.get('room');
@@ -114,36 +108,25 @@ export const Battle: React.FC = () => {
   
   // Custom battle settings form states
   const [selectedSubject, setSelectedSubject] = useState('quantitative_aptitude');
-  const [selectedTopic, setSelectedTopic] = useState('All');
-  const [selectedSubtopic, setSelectedSubtopic] = useState('All');
+  const [selectedTopic, setSelectedTopic] = useState(() => getTopicsForSubject('quantitative_aptitude')[0] || '');
   const [questionsCount, setQuestionsCount] = useState(5);
   const [difficulty, setDifficulty] = useState('Medium');
   const [timeLimit, setTimeLimit] = useState(30);
   const [isPrivate, setIsPrivate] = useState(true);
 
-  // Dynamic dropdown lists for custom challenges
+  // Dynamic Top 5 topics for custom challenges
   const availableTopics = useMemo(() => {
     return getTopicsForSubject(selectedSubject);
   }, [selectedSubject]);
 
-  const availableSubtopics = useMemo(() => {
-    if (!selectedTopic || selectedTopic === 'All') return [];
-    return getSubtopicsForTopic(selectedSubject, selectedTopic);
-  }, [selectedSubject, selectedTopic]);
-
   const handleSubjectChange = (newSubject: string) => {
     setSelectedSubject(newSubject);
-    setSelectedTopic('All');
-    setSelectedSubtopic('All');
+    const nextTopics = getTopicsForSubject(newSubject);
+    setSelectedTopic(nextTopics[0] || '');
   };
 
   const handleTopicChange = (newTopic: string) => {
     setSelectedTopic(newTopic);
-    setSelectedSubtopic('All');
-  };
-
-  const handleSubtopicChange = (newSubtopic: string) => {
-    setSelectedSubtopic(newSubtopic);
   };
 
   // Combat details
@@ -204,11 +187,34 @@ export const Battle: React.FC = () => {
     return (import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || window.location.origin).replace(/\/$/, '');
   };
 
-  // 1. Join matchmaking queue
+  // Elapsed timer while searching in Quick Match queue
+  useEffect(() => {
+    if (status !== 'searching') {
+      setSearchElapsedSeconds(0);
+      return;
+    }
+    const timer = setInterval(() => {
+      setSearchElapsedSeconds(prev => prev + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [status]);
+
+  // 1. Join matchmaking queue (Strictly Quantitative Aptitude)
   const handleStartSearch = () => {
+    if (isSearchingRef.current || status === 'searching') return;
+    isSearchingRef.current = true;
+    searchCancelledRef.current = false;
+
     setStatus('searching');
-    setSearchStatusMsg('Connecting to matchmaking corridor...');
+    setSearchElapsedSeconds(0);
+    setSearchStatusMsg('Connecting to Quantitative Aptitude matchmaking...');
     
+    // Clean any stale socket before opening a new one
+    if (matchmakingSocket.current) {
+      matchmakingSocket.current.disconnect();
+      matchmakingSocket.current = null;
+    }
+
     // Connect to matchmaking namespace with Firebase Auth token
     matchmakingSocket.current = io(`${getSocketUrl()}/matchmaking`, {
       transports: ['websocket'],
@@ -216,9 +222,10 @@ export const Battle: React.FC = () => {
     });
 
     matchmakingSocket.current.on('connect', () => {
-      setSearchStatusMsg('Searching for active placement candidates...');
+      if (searchCancelledRef.current) return;
+      setSearchStatusMsg('Searching for an Aptitude competitor...');
       matchmakingSocket.current?.emit('join_lobby', {
-        battleType: selectedCategory,
+        battleType: QUICK_MATCH_SUBJECT,
         rating: userProfile?.battleRating || 1000,
         profile: {
           displayName: userProfile?.displayName || 'Anonymous',
@@ -233,10 +240,20 @@ export const Battle: React.FC = () => {
     });
 
     matchmakingSocket.current.on('match_status', (data: { message: string }) => {
-      setSearchStatusMsg(data.message);
+      if (!searchCancelledRef.current) {
+        setSearchStatusMsg(data.message);
+      }
     });
 
     matchmakingSocket.current.on('match_found', (data: { battleId: string; opponent: Opponent; quiz: QuizQuestion[] }) => {
+      // Ignore late match_found if user already cancelled search
+      if (searchCancelledRef.current) {
+        matchmakingSocket.current?.disconnect();
+        matchmakingSocket.current = null;
+        return;
+      }
+
+      isSearchingRef.current = false;
       setBattleId(data.battleId);
       setOpponent(data.opponent);
       setQuestions(data.quiz);
@@ -245,26 +262,37 @@ export const Battle: React.FC = () => {
       setOpponentProgress({ progressIndex: 0, score: 0, finished: false });
       setCurrentIndex(0);
       currentIndexRef.current = 0;
-      setStatus('battle');
-      
+
       // Clean matchmaking socket
       matchmakingSocket.current?.disconnect();
       matchmakingSocket.current = null;
+
+      // Show brief Opponent Found preparation card before entering synchronized combat
+      setStatus('match_ready');
+      setTimeout(() => {
+        if (!searchCancelledRef.current) {
+          setStatus('battle');
+        }
+      }, 1600);
     });
 
     matchmakingSocket.current.on('match_error', (data: { message: string }) => {
+      isSearchingRef.current = false;
       alert(data.message);
       handleCancelSearch();
     });
   };
 
   const handleCancelSearch = () => {
+    searchCancelledRef.current = true;
+    isSearchingRef.current = false;
     if (matchmakingSocket.current) {
       matchmakingSocket.current.emit('leave_lobby', { userId: userProfile?.uid });
       matchmakingSocket.current.disconnect();
       matchmakingSocket.current = null;
     }
     setStatus('lounge');
+    setSearchElapsedSeconds(0);
     setSearchParams({});
     setPlayerScore(0);
     setPlayerCompletedQuestions(0);
@@ -302,6 +330,10 @@ export const Battle: React.FC = () => {
   };
 
   const handleCreateCustomRoom = async () => {
+    if (!selectedSubject || !selectedTopic) {
+      setJoinError('Please select both a subject and a topic before creating a room.');
+      return;
+    }
     setIsCreatingRoom(true);
     setJoinError(null);
     try {
@@ -316,8 +348,7 @@ export const Battle: React.FC = () => {
           questionsCount,
           difficulty,
           timeLimit,
-          topic: selectedTopic !== 'All' ? selectedTopic : undefined,
-          subtopic: selectedSubtopic !== 'All' ? selectedSubtopic : undefined,
+          topic: selectedTopic,
           isPrivate
         })
       });
@@ -366,8 +397,8 @@ export const Battle: React.FC = () => {
     const appBaseUrl = (import.meta.env.VITE_APP_URL || window.location.origin).replace(/\/$/, '');
     const inviteLink = `${appBaseUrl}/battle?room=${lobbyRoom.roomId}`;
     const subjectName = SUBJECT_LIST.find(s => s.slug === lobbyRoom.battleType)?.name || lobbyRoom.battleType;
-    const topicDetails = lobbyRoom.settings?.topic && lobbyRoom.settings.topic !== 'All'
-      ? `\nTopic: ${lobbyRoom.settings.topic}${lobbyRoom.settings?.subtopic && lobbyRoom.settings.subtopic !== 'All' ? ` (${lobbyRoom.settings.subtopic})` : ''}`
+    const topicDetails = lobbyRoom.settings?.topic
+      ? `\nTopic: ${lobbyRoom.settings.topic}`
       : '';
     const text = `🔥 I challenge you to a 1v1 battle on CrackPlace AI!\n\nRoom Code: ${lobbyRoom.roomId}\nSubject: ${subjectName}${topicDetails}\nDifficulty: ${lobbyRoom.settings.difficulty}\nQuestions: ${lobbyRoom.settings.questionsCount}\n\nCan you beat me?\n\nJoin here:\n${inviteLink}`;
     
@@ -929,38 +960,57 @@ export const Battle: React.FC = () => {
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 sm:p-7 rounded-xl space-y-6 shadow-xs">
             {loungeTab === 'quick' ? (
               <>
-                <div>
-                  <h3 className="font-semibold text-base text-slate-900 dark:text-white">
-                    Select Assessment Subject
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
+                      Ranked 1v1 Quick Match
+                    </span>
+                    <span className="text-xs font-mono font-semibold text-slate-600 dark:text-slate-300">
+                      Your Elo: {userProfile?.battleRating || 1000}
+                    </span>
+                  </div>
+                  <h3 className="font-bold text-lg text-slate-900 dark:text-white pt-1">
+                    Subject: Quantitative Aptitude
                   </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Choose a category to automatically find an opponent of matching skill level.</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                    Compete against another student in a synchronized aptitude assessment covering common placement topics.
+                  </p>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-                  {CATEGORIES.map(cat => {
-                    const isSelected = selectedCategory === cat;
-                    return (
-                      <button
-                        key={cat}
-                        onClick={() => setSelectedCategory(cat)}
-                        className={`p-4 rounded-xl border text-left flex flex-col justify-between gap-3 cursor-pointer transition-all duration-200 ${
-                          isSelected
-                            ? 'border-blue-600 bg-blue-50 dark:bg-blue-950/40 text-slate-900 dark:text-white shadow-xs ring-1 ring-blue-500/30'
-                            : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
-                        }`}
+                {/* Common Aptitude Topics Covered */}
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-3">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Placement Topics Covered
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {QUICK_MATCH_TOPICS.map(t => (
+                      <span
+                        key={t}
+                        className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200"
                       >
-                        <div className="flex items-center justify-between w-full">
-                          <span className="font-semibold text-sm text-slate-900 dark:text-white">{cat}</span>
-                          <span className={`w-4 h-4 rounded-full border flex items-center justify-center text-[10px] ${
-                            isSelected ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 dark:border-slate-700 bg-transparent'
-                          }`}>
-                            {isSelected ? '✓' : ''}
-                          </span>
-                        </div>
-                        <span className="text-[11px] text-slate-500 dark:text-slate-400">Standard 5-Question Format</span>
-                      </button>
-                    );
-                  })}
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-slate-200 dark:border-slate-700/70 text-xs text-slate-600 dark:text-slate-300">
+                    <div className="flex items-center gap-2">
+                      <FaCircleCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                      <span>5 questions per battle (MCQ format)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <FaCircleCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                      <span>Same questions &amp; order for both players</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <FaCircleCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                      <span>Server-controlled 30s per question timer</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <FaCircleCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                      <span>Authoritative Elo, XP &amp; Coin rewards</span>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex items-start gap-3">
@@ -968,14 +1018,17 @@ export const Battle: React.FC = () => {
                     <FaRegClock className="w-4 h-4" />
                   </div>
                   <div className="text-xs space-y-1">
-                    <p className="font-medium text-slate-900 dark:text-white">Matchmaking Criteria</p>
-                    <p className="text-slate-500 dark:text-slate-400 leading-relaxed">Matches are paired within ±100 Elo rating. Answers are evaluated server-side with strict latency tolerance and speed bonuses.</p>
+                    <p className="font-medium text-slate-900 dark:text-white">Competitive Matchmaking Criteria</p>
+                    <p className="text-slate-500 dark:text-slate-400 leading-relaxed">
+                      Initially pairs within ±100 Elo, gradually expanding (±200 at 10s, ±300 at 20s, ±500 at 30s+) to ensure fair and fast matches.
+                    </p>
                   </div>
                 </div>
 
                 <button
                   onClick={handleStartSearch}
-                  className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 font-semibold text-sm tracking-wide text-white shadow-xs transition-all duration-200 cursor-pointer flex items-center justify-center gap-2"
+                  disabled={isSearchingRef.current}
+                  className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold text-sm tracking-wide text-white shadow-xs transition-all duration-200 cursor-pointer flex items-center justify-center gap-2"
                 >
                   <FaPlay className="w-3.5 h-3.5" />
                   <span>Find Competitor</span>
@@ -1042,33 +1095,16 @@ export const Battle: React.FC = () => {
                         </select>
                       </div>
 
-                      {/* Topic */}
+                      {/* Topic (Top 5 Common Topics) */}
                       <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Topic</label>
+                        <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Topic (Top 5 Common)</label>
                         <select
                           value={selectedTopic}
                           onChange={e => handleTopicChange(e.target.value)}
                           className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm focus:outline-hidden focus:border-blue-600"
                         >
-                          <option value="All">All Topics (Mixed)</option>
                           {availableTopics.map(t => (
                             <option key={t} value={t}>{t}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* Subtopic */}
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Subtopic</label>
-                        <select
-                          value={selectedSubtopic}
-                          onChange={e => handleSubtopicChange(e.target.value)}
-                          disabled={selectedTopic === 'All' || availableSubtopics.length === 0}
-                          className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm focus:outline-hidden focus:border-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <option value="All">{selectedTopic === 'All' ? 'Select a topic first' : 'All Subtopics (Mixed)'}</option>
-                          {availableSubtopics.map(st => (
-                            <option key={st} value={st}>{st}</option>
                           ))}
                         </select>
                       </div>
@@ -1084,6 +1120,7 @@ export const Battle: React.FC = () => {
                           <option value="Easy">Easy (Foundation)</option>
                           <option value="Medium">Medium (Campus Standard)</option>
                           <option value="Hard">Hard (Product Level)</option>
+                          <option value="Mixed">Mixed (Balanced Tiers)</option>
                         </select>
                       </div>
 
@@ -1099,11 +1136,12 @@ export const Battle: React.FC = () => {
                           <option value="10">10 Questions (~6 mins)</option>
                           <option value="15">15 Questions (~10 mins)</option>
                           <option value="20">20 Questions (~15 mins)</option>
+                          <option value="30">30 Questions (~22 mins)</option>
                         </select>
                       </div>
 
                       {/* Time limit */}
-                      <div className="space-y-1.5">
+                      <div className="space-y-1.5 sm:col-span-2">
                         <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Pace (Time per Question)</label>
                         <select
                           value={timeLimit}
@@ -1133,7 +1171,7 @@ export const Battle: React.FC = () => {
 
                     <button
                       onClick={handleCreateCustomRoom}
-                      disabled={isCreatingRoom}
+                      disabled={isCreatingRoom || !selectedTopic}
                       className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 font-semibold text-sm tracking-wide text-white shadow-xs transition-all duration-200 cursor-pointer flex items-center justify-center gap-2"
                     >
                       <FaUserGroup className="w-3.5 h-3.5" />
@@ -1231,7 +1269,6 @@ export const Battle: React.FC = () => {
                 {lobbyRoom.settings?.topic && lobbyRoom.settings.topic !== 'All' && (
                   <span className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-medium">
                     {lobbyRoom.settings.topic}
-                    {lobbyRoom.settings?.subtopic && lobbyRoom.settings.subtopic !== 'All' ? ` • ${lobbyRoom.settings.subtopic}` : ''}
                   </span>
                 )}
               </div>
@@ -1382,6 +1419,50 @@ export const Battle: React.FC = () => {
               )}
             </div>
           </div>
+
+          {/* Read-only Locked Challenge Configuration */}
+          <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-between mb-2.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Challenge Configuration
+              </span>
+              <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500">
+                Locked by Host • Synchronized
+              </span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60">
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Subject</span>
+                <span className="font-semibold text-slate-900 dark:text-white truncate block">
+                  {SUBJECT_LIST.find(s => s.slug === lobbyRoom.battleType)?.shortName || lobbyRoom.subject || lobbyRoom.battleType}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60">
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Topic</span>
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400 truncate block">
+                  {lobbyRoom.settings?.topic || 'Standard'}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60">
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Difficulty</span>
+                <span className="font-semibold text-slate-900 dark:text-white block">
+                  {lobbyRoom.settings?.difficulty || 'Medium'}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60">
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Questions</span>
+                <span className="font-semibold text-slate-900 dark:text-white block">
+                  {lobbyRoom.settings?.questionsCount || 5} MCQs
+                </span>
+              </div>
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60 col-span-2 sm:col-span-1">
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Timer</span>
+                <span className="font-semibold text-slate-900 dark:text-white block">
+                  {lobbyRoom.settings?.timeLimit || 30}s / Q
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Invite Sharing Panel */}
@@ -1455,27 +1536,67 @@ export const Battle: React.FC = () => {
 
   // State 2: Searching Matchmaking
   if (status === 'searching') {
+    const myElo = userProfile?.battleRating || 1000;
+    const currentRange = searchElapsedSeconds < 10 ? 100 : searchElapsedSeconds < 20 ? 200 : searchElapsedSeconds < 30 ? 300 : 500;
+    const mins = Math.floor(searchElapsedSeconds / 60);
+    const secs = searchElapsedSeconds % 60;
+    const formattedElapsed = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+
     return (
       <div className="min-h-[50vh] flex flex-col items-center justify-center space-y-5 animate-fade-in max-w-md mx-auto text-center px-4">
-        <div className="w-12 h-12 rounded-full border-2 border-blue-600 border-t-transparent animate-spin"></div>
+        <div className="relative">
+          <div className="w-14 h-14 rounded-full border-3 border-blue-600 border-t-transparent animate-spin"></div>
+        </div>
         <div className="space-y-1">
-          <h2 className="font-bold text-lg text-slate-900 dark:text-white">Matchmaking Active</h2>
+          <h2 className="font-bold text-lg text-slate-900 dark:text-white">Searching for Opponent...</h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs">
             {searchStatusMsg}
           </p>
         </div>
 
-        <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-400 w-full shadow-xs">
-          <span>Target Elo Range: </span>
-          <span className="font-semibold text-slate-900 dark:text-white">{(userProfile?.battleRating || 1000) - 100} — {(userProfile?.battleRating || 1000) + 100}</span>
+        <div className="w-full grid grid-cols-2 gap-2.5">
+          <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs shadow-xs">
+            <span className="text-slate-500 dark:text-slate-400 block text-[10px] uppercase font-semibold">Waiting Time</span>
+            <span className="font-mono font-bold text-sm text-slate-900 dark:text-white">{formattedElapsed}</span>
+          </div>
+          <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs shadow-xs">
+            <span className="text-slate-500 dark:text-slate-400 block text-[10px] uppercase font-semibold">Elo Range (±{currentRange})</span>
+            <span className="font-mono font-bold text-sm text-blue-600 dark:text-blue-400">{Math.max(100, myElo - currentRange)} — {myElo + currentRange}</span>
+          </div>
         </div>
 
         <button
           onClick={handleCancelSearch}
           className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold transition-colors cursor-pointer shadow-xs"
         >
-          Cancel Queue
+          Cancel Search
         </button>
+      </div>
+    );
+  }
+
+  // State 2.5: Opponent Found Preparation Screen
+  if (status === 'match_ready' && opponent) {
+    return (
+      <div className="min-h-[50vh] flex flex-col items-center justify-center space-y-5 animate-fade-in max-w-md mx-auto text-center px-4">
+        <span className="text-xs font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
+          Competitor Matched!
+        </span>
+        <div className="w-full p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-4 text-left">
+          <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-blue-600 bg-slate-100 dark:bg-slate-800 shrink-0">
+            <img src={opponent.photoURL || getUserAvatarUrl(opponent)} alt={opponent.displayName} className="w-full h-full object-cover" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="font-bold text-base text-slate-900 dark:text-white truncate">{opponent.displayName}</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Level {opponent.level || 1} • <span className="font-semibold text-blue-600 dark:text-blue-400">{opponent.rating || 1000} Elo</span>
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+          <div className="w-4 h-4 rounded-full border-2 border-blue-600 border-t-transparent animate-spin"></div>
+          <span>Preparing synchronized Quantitative Aptitude battle...</span>
+        </div>
       </div>
     );
   }

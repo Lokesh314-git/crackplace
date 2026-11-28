@@ -1,7 +1,9 @@
 export interface TopicTaxonomy {
   name: string;
-  subtopics: string[];
+  description: string;
+  iconName: string;
   aliases?: string[];
+  subtopics?: string[];
 }
 
 export interface SubjectConfig {
@@ -12,6 +14,7 @@ export interface SubjectConfig {
   iconName: string;
   badge: string;
   targetCompanies: string;
+  supportsCoding?: boolean;
   defaultTopics: string[];
   topics: TopicTaxonomy[];
 }
@@ -21,391 +24,245 @@ export const SUBJECTS: Record<string, SubjectConfig> = {
     slug: 'quantitative_aptitude',
     name: 'Quantitative Aptitude',
     shortName: 'Aptitude',
-    description: 'Arithmetic, Percentages, Time & Work, Speed, Geometry, Probability, and Number Theory.',
+    description: 'Percentages, Profit & Loss, Time & Work, Speed & Distance, and Probability.',
     iconName: 'FaCalculator',
     badge: 'High Priority',
     targetCompanies: 'TCS, Infosys, Wipro, Accenture',
+    supportsCoding: false,
     defaultTopics: [
-      'Time and Speed',
-      'Percentages',
+      'Percentage',
       'Profit and Loss',
       'Time and Work',
-      'Simple Interest',
-      'Compound Interest',
-      'Ratio and Proportion',
-      'Averages',
-      'Problems on Ages',
-      'Number System',
-      'LCM and HCF',
-      'Pipes and Cisterns',
-      'Probability',
-      'Permutations and Combinations',
-      'Mixtures and Allegations',
-      'Partnership',
-      'Clocks',
-      'Calendars',
-      'Mensuration',
-      'Geometry'
+      'Time, Speed and Distance',
+      'Probability'
     ],
     topics: [
       {
-        name: 'Time and Speed',
-        aliases: ['Time Speed Distance', 'Speed, Distance & Time', 'Speed & Distance', 'Time, Speed and Distance', 'Trains', 'Boats and Streams'],
-        subtopics: [
-          'Problems on Trains',
-          'Relative Speed',
-          'Platform Crossing',
-          'Average Speed',
-          'Opposite Direction Crossing',
-          'Passing a Pole',
-          'Parallel Tracks Same Direction',
-          'Boats and Streams',
-          'Races',
-          'Stoppages'
-        ]
-      },
-      {
-        name: 'Percentages',
-        aliases: ['Percentage', 'Percentages & Profit'],
-        subtopics: [
-          'Basic Percentage',
-          'Price and Consumption',
-          'Successive Percentage',
-          'Population Growth',
-          'Election Problems',
-          'Income and Expenditure'
-        ]
+        name: 'Percentage',
+        description: 'Percentage calculations, successive changes, and ratio conversions.',
+        iconName: 'FaPercent',
+        aliases: ['Percentages', 'Percentages & Profit']
       },
       {
         name: 'Profit and Loss',
-        aliases: ['Profit & Loss'],
-        subtopics: [
-          'Cost and Selling Price',
-          'Faulty Balances',
-          'Successive Discounts',
-          'Marked Price and Discount',
-          'Equal Cost and Selling',
-          'Identical Selling Price'
-        ]
+        description: 'Cost price, selling price, marked price, and discount problems.',
+        iconName: 'FaChartLine',
+        aliases: ['Profit & Loss']
       },
       {
         name: 'Time and Work',
-        aliases: ['Time & Work', 'Time Work'],
-        subtopics: [
-          'Combined Work',
-          'Alternate Days',
-          'Efficiency Ratio',
-          'Wages Distribution',
-          'Pipes and Cisterns'
-        ]
+        description: 'Work efficiency, combined work rates, alternate days, and pipes.',
+        iconName: 'FaBriefcase',
+        aliases: ['Time & Work', 'Time Work', 'Pipes and Cisterns']
       },
       {
-        name: 'Simple Interest',
-        aliases: ['Simple & Compound Interest'],
-        subtopics: [
-          'Rate Calculation',
-          'Installments',
-          'Sum of Amounts',
-          'Principal Calculation',
-          'Time Calculation'
-        ]
-      },
-      {
-        name: 'Compound Interest',
-        subtopics: [
-          'Annual Compounding',
-          'Half-Yearly Compounding',
-          'Difference SI and CI',
-          'Compounding Frequency',
-          'Doubling Period'
-        ]
-      },
-      {
-        name: 'Ratio and Proportion',
-        aliases: ['Ratio & Proportion'],
-        subtopics: [
-          'Mean Proportional',
-          'Direct and Inverse Variation',
-          'Coin Problems',
-          'Third and Fourth Proportional',
-          'Salaries'
-        ]
-      },
-      {
-        name: 'Averages',
-        subtopics: [
-          'Arithmetic Mean',
-          'Replacement Problems',
-          'Cricket Batting Average',
-          'Speed and Harmonic Mean',
-          'Age of Group'
-        ]
-      },
-      {
-        name: 'Problems on Ages',
-        subtopics: [
-          'Linear Equations',
-          'Simultaneous Equations',
-          'Ratio Variations',
-          'Difference of Ages',
-          'Product of Ages'
-        ]
-      },
-      {
-        name: 'Number System',
-        aliases: ['Number Systems'],
-        subtopics: [
-          'Divisibility Rules',
-          'Remainders',
-          'Unit Digit',
-          'Trailing Zeroes',
-          'Factors and Multiples'
-        ]
-      },
-      {
-        name: 'LCM and HCF',
-        aliases: ['LCM & HCF'],
-        subtopics: [
-          'Word Problems',
-          'Remainders',
-          'Product Formula',
-          'Fractions',
-          'Smallest Multiple'
-        ]
-      },
-      {
-        name: 'Pipes and Cisterns',
-        subtopics: [
-          'Combined Filling',
-          'Filling and Emptying',
-          'Leakage Problems',
-          'Two Inlets One Outlet',
-          'Three Inlets'
-        ]
+        name: 'Time, Speed and Distance',
+        description: 'Relative speed, problems on trains, boats, and average speed.',
+        iconName: 'FaGaugeHigh',
+        aliases: ['Time and Speed', 'Time Speed Distance', 'Speed, Distance & Time', 'Speed & Distance', 'Trains', 'Boats and Streams', 'Problems on Trains'],
+        subtopics: ['Problems on Trains', 'Relative Speed', 'Boats and Streams', 'Average Speed']
       },
       {
         name: 'Probability',
-        subtopics: [
-          'Playing Cards',
-          'Independent Events',
-          'Dice Sums',
-          'Balls in an Urn',
-          'Tossing Coins'
-        ]
+        description: 'Events, conditional probability, dice, cards, and combinations.',
+        iconName: 'FaDice',
+        aliases: ['Probability']
+      }
+    ]
+  },
+  logical_reasoning: {
+    slug: 'logical_reasoning',
+    name: 'Logical Reasoning',
+    shortName: 'Reasoning',
+    description: 'Number Series, Coding-Decoding, Blood Relations, Seating Arrangement, and Syllogisms.',
+    iconName: 'FaBrain',
+    badge: 'Aptitude Core',
+    targetCompanies: 'TCS NQT, Capgemini, Cognizant',
+    supportsCoding: false,
+    defaultTopics: [
+      'Number Series',
+      'Coding-Decoding',
+      'Blood Relations',
+      'Seating Arrangement',
+      'Syllogisms'
+    ],
+    topics: [
+      {
+        name: 'Number Series',
+        description: 'Arithmetic, geometric, and mixed pattern number sequences.',
+        iconName: 'FaArrowUp19',
+        aliases: ['Number & Alphabet Series', 'Series']
       },
       {
-        name: 'Permutations and Combinations',
-        aliases: ['Permutation & Combination'],
-        subtopics: [
-          'Arrangements with Restrictions',
-          'Committee Selection',
-          'Circular Permutation',
-          'Handshakes',
-          'Digit Formation'
-        ]
+        name: 'Coding-Decoding',
+        description: 'Letter shifting, symbol substitution, and pattern ciphering.',
+        iconName: 'FaKey',
+        aliases: ['Coding Decoding']
       },
       {
-        name: 'Mixtures and Allegations',
-        aliases: ['Mixtures & Alligations'],
-        subtopics: [
-          'Replacement Rule',
-          'Two Solutions',
-          'Cost Price Alligation',
-          'Concentration Change',
-          'Milk and Water Ratio'
-        ]
+        name: 'Blood Relations',
+        description: 'Family tree deduction, coded relations, and lineage puzzles.',
+        iconName: 'FaUsers',
+        aliases: ['Blood Relation']
       },
       {
-        name: 'Partnership',
-        subtopics: [
-          'Profit Sharing Ratio',
-          'Unequal Periods',
-          'Active Partner Salary',
-          'Capital Change'
-        ]
+        name: 'Seating Arrangement',
+        description: 'Linear, circular, and multi-row positional arrangement puzzles.',
+        iconName: 'FaChair',
+        aliases: ['Seating Arrangements']
       },
       {
-        name: 'Clocks',
-        subtopics: [
-          'Angle Between Hands',
-          'Overlapping Hands',
-          'Right Angles',
-          'Minute Hand Speed'
-        ]
+        name: 'Syllogisms',
+        description: 'Venn diagram logic, deductive statements, and conclusions.',
+        iconName: 'FaDiagramProject',
+        aliases: ['Syllogism']
+      }
+    ]
+  },
+  verbal_ability: {
+    slug: 'verbal_ability',
+    name: 'Verbal Ability',
+    shortName: 'Verbal',
+    description: 'Reading Comprehension, Sentence Correction, Synonyms & Antonyms, Para Jumbles, and Error Detection.',
+    iconName: 'FaFont',
+    badge: 'Communication',
+    targetCompanies: 'Deloitte, Cognizant, Wipro, TCS',
+    supportsCoding: false,
+    defaultTopics: [
+      'Reading Comprehension',
+      'Sentence Correction',
+      'Synonyms and Antonyms',
+      'Para Jumbles',
+      'Error Detection'
+    ],
+    topics: [
+      {
+        name: 'Reading Comprehension',
+        description: 'Passage analysis, inference, main idea, and tone questions.',
+        iconName: 'FaBookOpen',
+        aliases: ['RC']
       },
       {
-        name: 'Calendars',
-        subtopics: [
-          'Odd Days',
-          'Century Leap Year',
-          'Same Calendar Year',
-          'Finding Day of Week'
-        ]
+        name: 'Sentence Correction',
+        description: 'Subject-verb agreement, modifiers, tenses, and parallelism.',
+        iconName: 'FaPenNib',
+        aliases: ['Grammar & Sentence Correction']
       },
       {
-        name: 'Mensuration',
-        subtopics: [
-          'Cylinders and Cones',
-          'Sphere Surface Area',
-          'Trapezium',
-          'Cylinder Volume'
-        ]
+        name: 'Synonyms and Antonyms',
+        description: 'Contextual word meanings, synonyms, antonyms, and analogies.',
+        iconName: 'FaSpellCheck',
+        aliases: ['Vocabulary (Synonyms/Antonyms)', 'Vocabulary', 'Synonyms & Antonyms']
       },
       {
-        name: 'Geometry',
-        subtopics: [
-          'Circles and Tangents',
-          'Triangles and Angles',
-          'Right Triangles',
-          'Polygons'
-        ]
+        name: 'Para Jumbles',
+        description: 'Coherent paragraph ordering and logical sentence flow.',
+        iconName: 'FaListOl',
+        aliases: ['Parajumbles']
+      },
+      {
+        name: 'Error Detection',
+        description: 'Identifying grammatical, preposition, and usage errors.',
+        iconName: 'FaMagnifyingGlass',
+        aliases: ['Spotting Errors']
       }
     ]
   },
   dsa: {
     slug: 'dsa',
-    name: 'Data Structures & Algorithms',
+    name: 'Data Structures and Algorithms',
     shortName: 'DSA',
-    description: 'Arrays, Strings, Linked Lists, Trees, Graphs, Dynamic Programming, Heaps, and Recursion.',
+    description: 'Arrays & Strings, Linked Lists, Stacks & Queues, Trees & BST, and Sorting & Searching.',
     iconName: 'FaCode',
-    badge: 'Core Technical',
-    targetCompanies: 'Amazon, Microsoft, Google, Adobe',
+    badge: 'Technical Core',
+    targetCompanies: 'Amazon, Google, Microsoft, Flipkart',
+    supportsCoding: true,
     defaultTopics: [
-      'Arrays',
-      'Strings',
+      'Arrays and Strings',
       'Linked Lists',
-      'Stacks & Queues',
-      'Trees & BST',
-      'Graphs',
-      'Dynamic Programming',
-      'Sorting & Searching',
-      'Heaps & Hashing',
-      'Recursion & Backtracking',
-      'Bit Manipulation'
+      'Stacks and Queues',
+      'Trees and Binary Search Trees',
+      'Sorting and Searching'
     ],
     topics: [
       {
-        name: 'Arrays',
-        subtopics: [
-          'Array Traversal',
-          'Two Pointers',
-          'Prefix Sum',
-          "Kadane's Algorithm",
-          'Insertion',
-          'Sliding Window'
-        ]
-      },
-      {
-        name: 'Strings',
-        subtopics: [
-          'Palindrome',
-          'Anagrams',
-          'Pattern Matching',
-          'Rabin-Karp',
-          'String Compression'
-        ]
+        name: 'Arrays and Strings',
+        description: 'Two pointers, sliding window, prefix sums, and string manipulation.',
+        iconName: 'FaLayerGroup',
+        aliases: ['Arrays', 'Strings', 'Arrays & Strings']
       },
       {
         name: 'Linked Lists',
-        subtopics: [
-          'Singly Linked List',
-          'Cycle Detection',
-          'Reversal',
-          'Middle Node',
-          'Doubly Linked List'
-        ]
+        description: 'Singly/doubly linked lists, cycle detection, and reversal.',
+        iconName: 'FaLink',
+        aliases: ['Linked List']
       },
       {
-        name: 'Stacks & Queues',
-        aliases: ['Stacks', 'Queues and Deques', 'Stacks and Queues'],
-        subtopics: [
-          'Stack Operations',
-          'Balanced Parentheses',
-          'Monotonic Stack',
-          'Queue using Stacks',
-          'Circular Queue',
-          'Deque'
-        ]
+        name: 'Stacks and Queues',
+        description: 'Monotonic stacks, expression parsing, and circular queues.',
+        iconName: 'FaBarsStaggered',
+        aliases: ['Stacks & Queues', 'Stack and Queue']
       },
       {
-        name: 'Trees & BST',
-        aliases: ['Trees', 'Binary Search Trees', 'Trees and BST'],
-        subtopics: [
-          'Binary Trees',
-          'Tree Traversal',
-          'BST Properties',
-          'Height',
-          'AVL Trees',
-          'Deletion'
-        ]
+        name: 'Trees and Binary Search Trees',
+        description: 'Traversals, height, LCA, BST validation, and balanced trees.',
+        iconName: 'FaSitemap',
+        aliases: ['Trees & BST', 'Trees', 'Binary Search Trees', 'Trees and BST']
       },
       {
-        name: 'Graphs',
-        aliases: ['Shortest Path Algorithms', 'Minimum Spanning Tree', 'Disjoint Set Union'],
-        subtopics: [
-          'BFS',
-          'DFS',
-          'Graph Terminology',
-          'Topological Sorting',
-          'Bipartite Graphs',
-          'Dijkstra',
-          'Kruskal',
-          'Union-Find / DSU'
-        ]
+        name: 'Sorting and Searching',
+        description: 'Binary search variants, quicksort, mergesort, and time bounds.',
+        iconName: 'FaArrowDownShortWide',
+        aliases: ['Sorting & Searching', 'Binary Search', 'Sorting']
+      }
+    ]
+  },
+  programming: {
+    slug: 'programming',
+    name: 'Programming',
+    shortName: 'Programming',
+    description: 'Core syntax, memory behavior, and idioms across Python, Java, C, C++, and JavaScript.',
+    iconName: 'FaTerminal',
+    badge: 'Language Mastery',
+    targetCompanies: 'TCS Digital, Zoho, Infosys SP, Amazon',
+    supportsCoding: true,
+    defaultTopics: [
+      'Python',
+      'Java',
+      'C',
+      'C++',
+      'JavaScript'
+    ],
+    topics: [
+      {
+        name: 'Python',
+        description: 'Data types, list comprehensions, decorators, and Pythonic idioms.',
+        iconName: 'FaPython',
+        aliases: ['Python Programming']
       },
       {
-        name: 'Dynamic Programming',
-        subtopics: [
-          '0/1 Knapsack',
-          'Longest Common Subsequence',
-          'Coin Change',
-          'Overlapping Subproblems',
-          'Edit Distance'
-        ]
+        name: 'Java',
+        description: 'JVM internals, collections framework, streams, and exceptions.',
+        iconName: 'FaJava',
+        aliases: ['Java Programming']
       },
       {
-        name: 'Sorting & Searching',
-        aliases: ['Searching', 'Sorting', 'Sorting and Searching'],
-        subtopics: [
-          'Binary Search',
-          'Merge Sort',
-          'Quick Sort',
-          'Search in Rotated Array',
-          'Bubble Sort',
-          'Counting Sort'
-        ]
+        name: 'C',
+        description: 'Pointers, memory layout, structs, and preprocessor behavior.',
+        iconName: 'FaTerminal',
+        aliases: ['C Programming', 'C Language']
       },
       {
-        name: 'Heaps & Hashing',
-        aliases: ['Heaps and Priority Queues', 'Hashing', 'Heaps and Hash Tables'],
-        subtopics: [
-          'Min Heap',
-          'Heap Insertion',
-          'Hash Collision',
-          'Two-sum Problems',
-          'Top K Problems'
-        ]
+        name: 'C++',
+        description: 'STL containers, references, templates, and smart pointers.',
+        iconName: 'FaCode',
+        aliases: ['CPP', 'C++ Programming']
       },
       {
-        name: 'Recursion & Backtracking',
-        aliases: ['Recursion', 'Backtracking'],
-        subtopics: [
-          'Base Cases',
-          'Tail Recursion',
-          'N-Queens',
-          'Subsets',
-          'Sudoku'
-        ]
-      },
-      {
-        name: 'Bit Manipulation',
-        subtopics: [
-          'Set Bit',
-          'Power of Two',
-          'Count Set Bits',
-          'XOR Properties',
-          'Toggle Bit'
-        ]
+        name: 'JavaScript',
+        description: 'Closures, event loop, promises, prototypes, and ES6+.',
+        iconName: 'FaJs',
+        aliases: ['JS']
       }
     ]
   },
@@ -413,46 +270,48 @@ export const SUBJECTS: Record<string, SubjectConfig> = {
     slug: 'dbms',
     name: 'Database Management Systems',
     shortName: 'DBMS',
-    description: 'SQL queries, Normalization, ACID properties, Indexing, Transactions, and ER modeling.',
+    description: 'SQL Queries, Normalization, Joins, Transactions & ACID, and Indexing.',
     iconName: 'FaDatabase',
     badge: 'CS Core',
-    targetCompanies: 'Oracle, Cisco, Morgan Stanley',
+    targetCompanies: 'Oracle, SAP, Cisco, Goldman Sachs',
+    supportsCoding: false,
     defaultTopics: [
       'SQL Queries',
-      'Joins & Subqueries',
-      'Transactions & ACID',
-      'Normalization (1NF-BCNF)',
-      'Indexing & B-Trees',
-      'Concurrency Control'
+      'Normalization',
+      'Joins',
+      'Transactions and ACID',
+      'Indexing'
     ],
     topics: [
       {
         name: 'SQL Queries',
-        subtopics: ['SELECT & WHERE', 'GROUP BY & HAVING', 'Aggregate Functions', 'Subqueries']
+        description: 'SELECT, GROUP BY, HAVING, aggregate functions, and subqueries.',
+        iconName: 'FaDatabase',
+        aliases: ['SQL']
       },
       {
-        name: 'Joins & Subqueries',
-        aliases: ['Joins'],
-        subtopics: ['INNER JOIN', 'LEFT OUTER JOIN', 'CROSS JOIN', 'Correlated Subqueries', 'Self Join']
+        name: 'Normalization',
+        description: 'Functional dependencies, 1NF, 2NF, 3NF, and BCNF.',
+        iconName: 'FaTableColumns',
+        aliases: ['Normalization (1NF-BCNF)']
       },
       {
-        name: 'Transactions & ACID',
-        aliases: ['Transactions'],
-        subtopics: ['Atomicity', 'Consistency', 'Isolation Levels', 'Durability', 'Write-Ahead Logging']
+        name: 'Joins',
+        description: 'INNER, LEFT, RIGHT, FULL OUTER, and self joins.',
+        iconName: 'FaCodeMerge',
+        aliases: ['Joins & Subqueries', 'SQL Joins']
       },
       {
-        name: 'Normalization (1NF-BCNF)',
-        aliases: ['Normalization'],
-        subtopics: ['First Normal Form (1NF)', 'Second Normal Form (2NF)', 'Third Normal Form (3NF)', 'BCNF']
+        name: 'Transactions and ACID',
+        description: 'Atomicity, consistency, isolation levels, and serializability.',
+        iconName: 'FaShieldHalved',
+        aliases: ['Transactions & ACID', 'ACID Properties', 'Transactions']
       },
       {
-        name: 'Indexing & B-Trees',
-        aliases: ['Indexing'],
-        subtopics: ['B+ Trees', 'Clustered vs Non-clustered', 'Hash Indexing', 'Query Optimization']
-      },
-      {
-        name: 'Concurrency Control',
-        subtopics: ['Two-Phase Locking (2PL)', 'Deadlock Handling', 'Timestamp Ordering', 'Lock Modes']
+        name: 'Indexing',
+        description: 'B+ trees, clustered vs non-clustered indexes, and query speed.',
+        iconName: 'FaBolt',
+        aliases: ['Indexing & B-Trees', 'B-Trees']
       }
     ]
   },
@@ -460,43 +319,48 @@ export const SUBJECTS: Record<string, SubjectConfig> = {
     slug: 'operating_system',
     name: 'Operating Systems',
     shortName: 'OS',
-    description: 'Process synchronization, Deadlocks, Memory Management, Paging, CPU Scheduling & Threads.',
+    description: 'Process Management, CPU Scheduling, Memory Management, Deadlocks, and Synchronization.',
     iconName: 'FaServer',
     badge: 'CS Core',
-    targetCompanies: 'Qualcomm, Intel, Samsung, Cisco',
+    targetCompanies: 'Microsoft, Qualcomm, Nvidia, Adobe',
+    supportsCoding: false,
     defaultTopics: [
+      'Process Management',
       'CPU Scheduling',
-      'Process Synchronization',
+      'Memory Management',
       'Deadlocks',
-      'Memory Management & Paging',
-      'Threads & Concurrency',
-      'File Systems & System Calls'
+      'Synchronization'
     ],
     topics: [
       {
-        name: 'CPU Scheduling',
-        subtopics: ['FCFS', 'Round Robin', 'Shortest Job First (SJF)', 'Priority Scheduling', 'Aging']
+        name: 'Process Management',
+        description: 'Process states, PCB, context switching, and threads.',
+        iconName: 'FaMicrochip',
+        aliases: ['Processes and Threads']
       },
       {
-        name: 'Process Synchronization',
-        subtopics: ['Critical Section', 'Semaphores', 'Mutex Locks', 'Peterson\'s Solution', 'Spinlocks']
+        name: 'CPU Scheduling',
+        description: 'FCFS, SJF, Round Robin, priority scheduling, and turnaround.',
+        iconName: 'FaClock',
+        aliases: ['Scheduling Algorithms']
+      },
+      {
+        name: 'Memory Management',
+        description: 'Paging, segmentation, TLB, page replacement, and thrashing.',
+        iconName: 'FaMemory',
+        aliases: ['Memory Management & Paging', 'Virtual Memory']
       },
       {
         name: 'Deadlocks',
-        subtopics: ['Coffman Conditions', 'Banker\'s Algorithm', 'Deadlock Prevention', 'Resource Allocation Graph']
+        description: 'Coffman conditions, Banker’s algorithm, and deadlock recovery.',
+        iconName: 'FaLock',
+        aliases: ['Deadlock']
       },
       {
-        name: 'Memory Management & Paging',
-        aliases: ['Memory Management', 'Paging'],
-        subtopics: ['Paging & Segmentation', 'Virtual Memory', 'TLB', 'Page Replacement (FIFO/LRU)', 'Thrashing']
-      },
-      {
-        name: 'Threads & Concurrency',
-        subtopics: ['User vs Kernel Threads', 'Race Conditions', 'Thread Pools', 'Multithreading Models']
-      },
-      {
-        name: 'File Systems & System Calls',
-        subtopics: ['File Allocation Methods', 'Inodes', 'fork() and exec()', 'I/O Management']
+        name: 'Synchronization',
+        description: 'Mutexes, semaphores, critical section, and race conditions.',
+        iconName: 'FaArrowsRotate',
+        aliases: ['Process Synchronization']
       }
     ]
   },
@@ -504,130 +368,146 @@ export const SUBJECTS: Record<string, SubjectConfig> = {
     slug: 'computer_network',
     name: 'Computer Networks',
     shortName: 'Networks',
-    description: 'OSI Model, TCP/IP, Routing Protocols, DNS, HTTP/HTTPS, Subnetting and Network Security.',
+    description: 'OSI & TCP/IP Models, Network Protocols, IP Addressing, TCP vs UDP, and Routing & Switching.',
     iconName: 'FaNetworkWired',
-    badge: 'Networking',
-    targetCompanies: 'Cisco, Juniper, Arista, Jio',
+    badge: 'CS Core',
+    targetCompanies: 'Cisco, Juniper, Arista, Amazon',
+    supportsCoding: false,
     defaultTopics: [
-      'OSI & TCP/IP Models',
-      'IP Addressing & Subnetting',
-      'TCP vs UDP Protocols',
-      'Routing Algorithms',
-      'Application Layer (HTTP/DNS)',
-      'Network Security & Firewalls'
+      'OSI and TCP/IP Models',
+      'Network Protocols',
+      'IP Addressing',
+      'TCP vs UDP',
+      'Routing and Switching'
     ],
     topics: [
       {
-        name: 'OSI & TCP/IP Models',
-        subtopics: ['7 Layers Architecture', 'Encapsulation', 'Layer Responsibilities', 'Protocol Data Units']
+        name: 'OSI and TCP/IP Models',
+        description: '7-layer OSI architecture, encapsulation, and TCP/IP stack.',
+        iconName: 'FaLayerGroup',
+        aliases: ['OSI & TCP/IP Models', 'OSI Model']
       },
       {
-        name: 'IP Addressing & Subnetting',
-        subtopics: ['IPv4 Classes', 'CIDR Notation', 'Subnet Mask Calculation', 'IPv6 Basics', 'Private vs Public IP']
+        name: 'Network Protocols',
+        description: 'HTTP/HTTPS, DNS, DHCP, ARP, ICMP, and application protocols.',
+        iconName: 'FaGlobe',
+        aliases: ['HTTP DNS ARP']
       },
       {
-        name: 'TCP vs UDP Protocols',
-        subtopics: ['3-Way Handshake', 'Flow Control & Congestion Control', 'Reliability vs Speed', 'UDP Datagrams']
+        name: 'IP Addressing',
+        description: 'IPv4/IPv6, CIDR notation, subnet masks, and NAT.',
+        iconName: 'FaNetworkWired',
+        aliases: ['IP Addressing & Subnetting', 'Subnetting']
       },
       {
-        name: 'Routing Algorithms',
-        subtopics: ['Dijkstra / OSPF', 'Distance Vector / RIP', 'BGP', 'Link-State Routing']
+        name: 'TCP vs UDP',
+        description: '3-way handshake, flow/congestion control, and UDP datagrams.',
+        iconName: 'FaRightLeft',
+        aliases: ['TCP vs UDP Protocols']
       },
       {
-        name: 'Application Layer (HTTP/DNS)',
-        subtopics: ['DNS Resolution', 'HTTP vs HTTPS', 'Cookies & Headers', 'SMTP/FTP']
-      },
-      {
-        name: 'Network Security & Firewalls',
-        subtopics: ['Packet Filtering', 'NAT', 'SSL/TLS Handshake', 'DDoS Attacks']
+        name: 'Routing and Switching',
+        description: 'MAC tables, distance vector, link state, and OSPF/BGP.',
+        iconName: 'FaRoute',
+        aliases: ['Routing']
       }
     ]
   },
-  logical_reasoning: {
-    slug: 'logical_reasoning',
-    name: 'Logical Reasoning & Puzzles',
-    shortName: 'Reasoning',
-    description: 'Blood relations, Syllogisms, Seating arrangement, Series completion, and Classic interview riddles.',
-    iconName: 'FaBrain',
-    badge: 'Aptitude',
-    targetCompanies: 'Deloitte, PwC, EY, KPMG',
+  oops: {
+    slug: 'oops',
+    name: 'Object-Oriented Programming',
+    shortName: 'OOP',
+    description: 'Encapsulation, Inheritance, Polymorphism, Abstraction, and Constructors & Methods.',
+    iconName: 'FaCubes',
+    badge: 'Design Core',
+    targetCompanies: 'Zoho, Amazon, Microsoft, Atlassian',
+    supportsCoding: true,
     defaultTopics: [
-      'Blood Relations',
-      'Number & Alphabet Series',
-      'Direction Sense',
-      'Syllogisms',
-      'Coding-Decoding',
-      'Seating Arrangements'
+      'Encapsulation',
+      'Inheritance',
+      'Polymorphism',
+      'Abstraction',
+      'Constructors and Methods'
     ],
     topics: [
       {
-        name: 'Blood Relations',
-        subtopics: ['Family Tree Analysis', 'Coded Blood Relations', 'Direct Identification']
+        name: 'Encapsulation',
+        description: 'Data hiding, access modifiers, and getters/setters.',
+        iconName: 'FaBoxArchive',
+        aliases: []
       },
       {
-        name: 'Number & Alphabet Series',
-        subtopics: ['Difference Patterns', 'Geometric Patterns', 'Alternating Series', 'Letter Shifting']
+        name: 'Inheritance',
+        description: 'Single, multilevel, hierarchical inheritance, and base/super.',
+        iconName: 'FaSitemap',
+        aliases: []
       },
       {
-        name: 'Direction Sense',
-        subtopics: ['Cardinal Directions', 'Turn & Angle Changes', 'Displacement Calculation', 'Shadow Problems']
+        name: 'Polymorphism',
+        description: 'Method overloading, overriding, virtual dispatch, and binding.',
+        iconName: 'FaShapes',
+        aliases: []
       },
       {
-        name: 'Syllogisms',
-        subtopics: ['Venn Diagram Method', 'Possibility Cases', 'Negative Statements']
+        name: 'Abstraction',
+        description: 'Abstract classes, interfaces, and implementation hiding.',
+        iconName: 'FaEyeSlash',
+        aliases: []
       },
       {
-        name: 'Coding-Decoding',
-        subtopics: ['Letter Shifting', 'Number Coding', 'Substitution Coding']
-      },
-      {
-        name: 'Seating Arrangements',
-        subtopics: ['Linear Arrangement', 'Circular Arrangement', 'Facing Center/Outside']
+        name: 'Constructors and Methods',
+        description: 'Default/copy constructors, destructors, static, and final.',
+        iconName: 'FaWrench',
+        aliases: ['Constructors']
       }
     ]
   },
-  verbal_ability: {
-    slug: 'verbal_ability',
-    name: 'Verbal Ability & English',
-    shortName: 'English',
-    description: 'Reading Comprehension, Sentence Correction, Vocabulary, Para Jumbles and Grammar.',
-    iconName: 'FaFont',
-    badge: 'Communication',
-    targetCompanies: 'Cognizant, Capgemini, Tech Mahindra',
+  web_development: {
+    slug: 'web_development',
+    name: 'Web Development',
+    shortName: 'Web Dev',
+    description: 'HTML & CSS, JavaScript Fundamentals, React, Node.js, and REST APIs.',
+    iconName: 'FaLaptopCode',
+    badge: 'Full Stack',
+    targetCompanies: 'Flipkart, Swiggy, Razorpay, Startups',
+    supportsCoding: true,
     defaultTopics: [
-      'Sentence Correction & Grammar',
-      'Vocabulary (Synonyms/Antonyms)',
-      'Reading Comprehension',
-      'Para Jumbles',
-      'Error Spotting',
-      'Idioms & Phrases'
+      'HTML and CSS',
+      'JavaScript Fundamentals',
+      'React',
+      'Node.js',
+      'REST APIs'
     ],
     topics: [
       {
-        name: 'Sentence Correction & Grammar',
-        aliases: ['Grammar', 'Sentence Correction'],
-        subtopics: ['Subject-Verb Agreement', 'Tense Consistency', 'Modifiers & Parallelism', 'Articles & Prepositions']
+        name: 'HTML and CSS',
+        description: 'Semantic HTML, Flexbox, Grid, specificity, and responsive design.',
+        iconName: 'FaHtml5',
+        aliases: ['HTML & CSS']
       },
       {
-        name: 'Vocabulary (Synonyms/Antonyms)',
-        aliases: ['Vocabulary'],
-        subtopics: ['Synonyms', 'Antonyms', 'Contextual Word Meanings']
+        name: 'JavaScript Fundamentals',
+        description: 'DOM manipulation, fetch API, closures, and async/await.',
+        iconName: 'FaJs',
+        aliases: ['DOM & Async JS']
       },
       {
-        name: 'Reading Comprehension',
-        subtopics: ['Main Idea & Tone', 'Inference Questions', 'Fact Verification']
+        name: 'React',
+        description: 'Hooks, virtual DOM, state management, and component lifecycle.',
+        iconName: 'FaReact',
+        aliases: ['React.js']
       },
       {
-        name: 'Para Jumbles',
-        subtopics: ['Opening Sentences', 'Mandatory Pairs', 'Logical Sequencing']
+        name: 'Node.js',
+        description: 'Event-driven I/O, Express middleware, streams, and npm.',
+        iconName: 'FaNodeJs',
+        aliases: ['Node']
       },
       {
-        name: 'Error Spotting',
-        subtopics: ['Grammatical Errors', 'Punctuation Errors', 'Idiomatic Usage']
-      },
-      {
-        name: 'Idioms & Phrases',
-        subtopics: ['Common Idioms', 'Phrasal Verbs', 'Proverbs']
+        name: 'REST APIs',
+        description: 'HTTP methods, status codes, statelessness, and JSON payloads.',
+        iconName: 'FaServer',
+        aliases: ['REST']
       }
     ]
   },
@@ -635,10 +515,11 @@ export const SUBJECTS: Record<string, SubjectConfig> = {
     slug: 'hr_behavioral',
     name: 'HR & Behavioral',
     shortName: 'HR & Behavioral',
-    description: 'STAR method practice, situational questions, project defense and communication rubric.',
+    description: 'STAR method practice, leadership, conflict resolution, and communication rubric.',
     iconName: 'FaComments',
     badge: 'Interview Simulation',
     targetCompanies: 'All Tech & Product Companies',
+    supportsCoding: false,
     defaultTopics: [
       'STAR Method Behavioral',
       'Leadership & Teamwork',
@@ -649,23 +530,33 @@ export const SUBJECTS: Record<string, SubjectConfig> = {
     topics: [
       {
         name: 'STAR Method Behavioral',
-        subtopics: ['Situation & Task Definition', 'Action Detail', 'Measurable Results']
+        description: 'Structuring Situation, Task, Action, and Result answers.',
+        iconName: 'FaStar',
+        aliases: []
       },
       {
         name: 'Leadership & Teamwork',
-        subtopics: ['Leading Initiatives', 'Handling Deadlines', 'Team Motivation']
+        description: 'Ownership, collaboration, mentoring, and deadline handling.',
+        iconName: 'FaUsers',
+        aliases: []
       },
       {
         name: 'Conflict Resolution',
-        subtopics: ['Technical Disagreements', 'Cross-Functional Alignment', 'Diplomatic Communication']
+        description: 'Resolving technical disagreements and team friction constructively.',
+        iconName: 'FaHandshake',
+        aliases: []
       },
       {
         name: 'Strengths & Weaknesses',
-        subtopics: ['Self-Awareness', 'Growth Mindset', 'Constructive Improvement']
+        description: 'Self-awareness, growth mindset, and constructive framing.',
+        iconName: 'FaScaleBalanced',
+        aliases: []
       },
       {
         name: 'Career Goals & Motivation',
-        subtopics: ['Why This Company', '5-Year Vision', 'Company Culture Fit']
+        description: 'Company alignment, role motivation, and 5-year vision.',
+        iconName: 'FaCompass',
+        aliases: []
       }
     ]
   }
@@ -683,10 +574,19 @@ export function normalizeSubjectSlug(input?: string | null): string {
   if (raw === 'aptitude' || raw.includes('quant') || raw === 'quantitative_aptitude') {
     return 'quantitative_aptitude';
   }
-  if (raw === 'dsa' || raw.includes('data_structure') || raw.includes('algorithm') || raw.includes('programming')) {
+  if (raw === 'dsa' || raw.includes('data_structure') || raw.includes('algorithm')) {
     return 'dsa';
   }
-  if (raw === 'dbms' || raw.includes('database') || raw.includes('sql')) {
+  if (raw === 'programming' || raw === 'coding_languages') {
+    return 'programming';
+  }
+  if (raw === 'oops' || raw === 'oop' || raw.includes('object_oriented')) {
+    return 'oops';
+  }
+  if (raw === 'web_development' || raw === 'web_dev' || raw === 'web') {
+    return 'web_development';
+  }
+  if (raw === 'dbms' || raw.includes('database') || raw === 'sql') {
     return 'dbms';
   }
   if (raw === 'os' || raw.includes('operating_system') || raw === 'operating_systems') {
@@ -710,43 +610,42 @@ export function normalizeSubjectSlug(input?: string | null): string {
 }
 
 /**
- * Retrieve unique topics list for a subject
+ * Retrieve the Top 5 Common Topics for a subject
  */
 export function getTopicsForSubject(subjectSlug?: string): string[] {
   const slug = normalizeSubjectSlug(subjectSlug);
   const cfg = SUBJECTS[slug];
   if (!cfg) return [];
-  if (cfg.topics && cfg.topics.length > 0) {
-    return cfg.topics.map(t => t.name);
-  }
-  return cfg.defaultTopics || [];
+  return cfg.topics.slice(0, 5).map(t => t.name);
 }
 
 /**
- * Retrieve subtopics list for a given subject and topic
+ * Retrieve full Top 5 Topic objects (name, description, iconName) for a subject
+ */
+export function getTopicObjectsForSubject(subjectSlug?: string): TopicTaxonomy[] {
+  const slug = normalizeSubjectSlug(subjectSlug);
+  const cfg = SUBJECTS[slug];
+  if (!cfg) return [];
+  return cfg.topics.slice(0, 5);
+}
+
+/**
+ * Legacy helper kept for backward compatibility with Battle Arena if referenced
  */
 export function getSubtopicsForTopic(subjectSlug: string, topicName: string): string[] {
   const slug = normalizeSubjectSlug(subjectSlug);
   const cfg = SUBJECTS[slug];
   if (!cfg || !cfg.topics) return [];
-
-  const normTopic = topicName.trim().toLowerCase();
-  for (const t of cfg.topics) {
-    if (t.name.toLowerCase() === normTopic) {
-      return t.subtopics || [];
-    }
-    if (t.aliases && t.aliases.some(a => a.toLowerCase() === normTopic)) {
-      return t.subtopics || [];
-    }
-  }
-
-  // Fuzzy check
   const found = cfg.topics.find(t => isTopicMatch(t.name, topicName));
   return found ? (found.subtopics || []) : [];
 }
 
+function cleanTopicToken(str: string): string {
+  return str.toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9+]/g, '');
+}
+
 /**
- * Robust topic matching supporting aliases and canonical normalization
+ * Strict, non-bleeding topic matching supporting exact canonical names and explicit taxonomy aliases.
  */
 export function isTopicMatch(candidateTopic?: string | null, targetTopic?: string | null): boolean {
   if (!candidateTopic || !targetTopic) return false;
@@ -756,21 +655,14 @@ export function isTopicMatch(candidateTopic?: string | null, targetTopic?: strin
   if (c === t) return true;
   if (t === 'all' || t === 'all topics') return true;
 
-  const cleanC = c.replace(/[^a-z0-9]/g, '');
-  const cleanT = t.replace(/[^a-z0-9]/g, '');
+  const cleanC = cleanTopicToken(c);
+  const cleanT = cleanTopicToken(t);
   if (cleanC === cleanT) return true;
 
-  // Special mappings for Time and Speed / Trains / Distance
-  const timeSpeedPatterns = ['timeandspeed', 'timespeeddistance', 'speeddistancetime', 'speeddistance', 'trains', 'problemsontrains'];
-  if (timeSpeedPatterns.includes(cleanT) && timeSpeedPatterns.includes(cleanC)) {
-    return true;
-  }
-
-  // Check aliases from taxonomy
   for (const sub of Object.values(SUBJECTS)) {
     for (const top of sub.topics || []) {
-      const topClean = top.name.toLowerCase().replace(/[^a-z0-9]/g, '');
-      const aliasCleans = (top.aliases || []).map(a => a.toLowerCase().replace(/[^a-z0-9]/g, ''));
+      const topClean = cleanTopicToken(top.name);
+      const aliasCleans = (top.aliases || []).map(a => cleanTopicToken(a));
       const allVariants = [topClean, ...aliasCleans];
       if (allVariants.includes(cleanT) && allVariants.includes(cleanC)) {
         return true;
@@ -778,33 +670,5 @@ export function isTopicMatch(candidateTopic?: string | null, targetTopic?: strin
     }
   }
 
-  // Substring match for compound phrases
-  if (cleanC.includes(cleanT) || cleanT.includes(cleanC)) {
-    if ((cleanC.includes('work') && cleanT.includes('speed')) || (cleanC.includes('speed') && cleanT.includes('work'))) {
-      return false;
-    }
-    return true;
-  }
-
   return false;
-}
-
-/**
- * Robust subtopic matching
- */
-export function isSubtopicMatch(candidateSubtopic?: string | null, targetSubtopic?: string | null): boolean {
-  if (!candidateSubtopic || !targetSubtopic) return false;
-  const c = candidateSubtopic.trim().toLowerCase();
-  const t = targetSubtopic.trim().toLowerCase();
-
-  if (c === t) return true;
-  if (t === 'all' || t === 'all subtopics') return true;
-
-  const cleanC = c.replace(/[^a-z0-9]/g, '');
-  const cleanT = t.replace(/[^a-z0-9]/g, '');
-  if (cleanC === cleanT) return true;
-
-  if (cleanT.includes('train') && cleanC.includes('train')) return true;
-
-  return cleanC.includes(cleanT) || cleanT.includes(cleanC);
 }

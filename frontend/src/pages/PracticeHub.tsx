@@ -12,7 +12,10 @@ import {
   FaCirclePlay,
   FaEye,
   FaMagnifyingGlass,
-  FaXmark
+  FaXmark,
+  FaTerminal,
+  FaCubes,
+  FaLaptopCode
 } from 'react-icons/fa6';
 import { Badge, EmptyState } from '../components/ui';
 import { useAuthStore } from '../store/authStore';
@@ -29,7 +32,10 @@ const ICON_MAP: Record<string, React.ReactNode> = {
   FaNetworkWired: <FaNetworkWired className="w-5 h-5 text-rose-600" />,
   FaBrain: <FaBrain className="w-5 h-5 text-blue-600" />,
   FaFont: <FaFont className="w-5 h-5 text-emerald-600" />,
-  FaComments: <FaComments className="w-5 h-5 text-purple-600" />
+  FaComments: <FaComments className="w-5 h-5 text-purple-600" />,
+  FaTerminal: <FaTerminal className="w-5 h-5 text-indigo-600" />,
+  FaCubes: <FaCubes className="w-5 h-5 text-cyan-600" />,
+  FaLaptopCode: <FaLaptopCode className="w-5 h-5 text-pink-600" />
 };
 
 export const PracticeHub: React.FC = () => {
@@ -82,7 +88,7 @@ export const PracticeHub: React.FC = () => {
 
   const filteredSubjects = SUBJECT_LIST.filter((item: SubjectConfig) => {
     if (activeTab === 'tech') {
-      if (!['dsa', 'dbms', 'operating_system', 'computer_network'].includes(item.slug)) return false;
+      if (!['dsa', 'programming', 'dbms', 'operating_system', 'computer_network', 'oops', 'web_development'].includes(item.slug)) return false;
     } else if (activeTab === 'aptitude') {
       if (!['quantitative_aptitude', 'logical_reasoning'].includes(item.slug)) return false;
     } else if (activeTab === 'soft') {

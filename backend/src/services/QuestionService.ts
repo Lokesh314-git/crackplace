@@ -5,6 +5,7 @@ import { Question, SanitizedQuestion } from '../types/question';
 import { supabase, isSupabaseConfigured } from '../config/supabase';
 import { redisClient } from '../config/redis';
 import logger from '../utils/logger';
+import AIService from './AIService';
 import { isTopicMatch, isSubtopicMatch, normalizeSubjectSlug as normalizeSlugCanonical, SUBJECTS } from '../constants/subjects';
 
 export interface PlayerQuestionPackage {
@@ -46,34 +47,10 @@ export class QuestionService {
    * Subject aliases to standardized database slug mapping
    */
   public static normalizeSubjectSlug(category: string): string {
-    const s = (category || '').toLowerCase().trim().replace(/[\s-]+/g, '_');
-
-    if (s.includes('aptitude') || s.includes('quant') || s.includes('math') || s.includes('arithmetic')) {
-      return 'quantitative_aptitude';
-    }
-    if (s.includes('dsa') || s.includes('data_structure') || s.includes('algorithm') || s.includes('programming') || s.includes('java') || s.includes('python')) {
-      return 'dsa';
-    }
-    if (s.includes('dbms') || s.includes('database') || s.includes('sql')) {
-      return 'dbms';
-    }
-    if (s.includes('os') || s.includes('operating_system') || s.includes('linux')) {
-      return 'operating_system';
-    }
-    if (s.includes('network') || s.includes('cn') || s.includes('telecom')) {
-      return 'computer_network';
-    }
-    if (s.includes('reasoning') || s.includes('logic') || s.includes('puzzle')) {
-      return 'logical_reasoning';
-    }
-    if (s.includes('verbal') || s.includes('english') || s.includes('grammar') || s.includes('reading')) {
-      return 'verbal_ability';
-    }
-    if (s.includes('hr') || s.includes('behavioral') || s.includes('interview')) {
-      return 'hr_behavioral';
-    }
-
-    return s || 'dsa';
+    if (!category) return 'dsa';
+    const raw = category.toLowerCase().trim().replace(/[\s-]+/g, '_');
+    if (SUBJECTS[raw]) return raw;
+    return normalizeSlugCanonical(category);
   }
 
   /**
@@ -275,8 +252,203 @@ export class QuestionService {
   }
 
   /**
+   * Content-level topic bleed guard & structural validator.
+   * Ensures a question's prompt/options actually fit the requested topic and do not bleed from unrelated topics.
+   */
+  public static isQuestionContentValidForTopic(
+    q: Question,
+    subjectSlug: string,
+    targetTopic: string
+  ): boolean {
+    const structCheck = this.validateQuestion(q);
+    if (!structCheck.valid) return false;
+
+    const text = `${q.question} ${(q.options || []).join(' ')}`.toLowerCase();
+    const normTarget = targetTopic.toLowerCase().trim();
+
+    // Prevent topic bleeding in Quantitative Aptitude
+    if (subjectSlug === 'quantitative_aptitude') {
+      if (normTarget.includes('time and work') || normTarget.includes('time & work')) {
+        if (/\b(dice|playing card|deck of cards|toss|probability of|head|tail|cost price|selling price|marked price|profit %|loss %)\b/i.test(text)) {
+          return false;
+        }
+      }
+      if (normTarget.includes('probability')) {
+        if (/\b(cost price|selling price|marked price|cistern|pipes? fill|efficiency ratio)\b/i.test(text)) {
+          return false;
+        }
+      }
+      if (normTarget.includes('profit') || normTarget.includes('loss')) {
+        if (/\b(probability of|dice|playing card|pipes? fill|cistern)\b/i.test(text)) {
+          return false;
+        }
+      }
+      if (normTarget.includes('speed') || normTarget.includes('distance')) {
+        if (/\b(cost price|selling price|probability of|dice|playing card|cistern|pipes? fill)\b/i.test(text)) {
+          return false;
+        }
+      }
+    }
+
+    // Prevent topic bleeding in DSA
+    if (subjectSlug === 'dsa') {
+      if (normTarget.includes('arrays') || normTarget.includes('strings')) {
+        if (/\b(linked list|singly linked|doubly linked|binary search tree|avl tree|red-black tree|dijkstra|kruskal|prim's)\b/i.test(text)) {
+          return false;
+        }
+      }
+      if (normTarget.includes('linked list')) {
+        if (/\b(binary search tree|avl tree|dijkstra|bfs|dfs|quicksort|mergesort)\b/i.test(text)) {
+          return false;
+        }
+      }
+    }
+
+    // Prevent C vs C++ bleeding in Programming
+    if (subjectSlug === 'programming' && normTarget === 'c') {
+      if (/\b(std::|cout|cin|vector<|iostream|namespace std|virtual function|template\s*<)\b/i.test(text)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * Generates, parses, and strictly validates additional questions via AI when the question bank
+   * has fewer valid questions than requested for a topic. Never falls back to unrelated topics.
+   */
+  public static async generateValidatedAIQuestions(params: {
+    subjectSlug: string;
+    subjectName: string;
+    topic: string;
+    difficulty: string;
+    count: number;
+    questionType?: 'mcq' | 'coding';
+    existingHashes: Set<string>;
+  }): Promise<Question[]> {
+    if (!AIService.hasConfiguredProvider()) {
+      return [];
+    }
+
+    const needed = Math.min(20, Math.max(1, params.count));
+    const isMixed = params.difficulty.toLowerCase() === 'mixed' || params.difficulty.toLowerCase() === 'all';
+    const diffPrompt = isMixed ? 'Mixed (a balanced mix of Easy, Medium, and Hard)' : params.difficulty;
+    const formatNote = params.questionType === 'coding'
+      ? 'Code-based / Algorithmic multiple-choice questions (include short code snippets or complexity/output analysis where appropriate)'
+      : 'Multiple Choice Questions (MCQ)';
+
+    const systemPrompt = `You are an expert technical placement assessment author.
+You must generate strictly valid, unambiguous, placement-level questions ONLY for the exact requested Subject and Topic.
+Never mix in questions from any other topic or subject.`;
+
+    const userPrompt = `Generate exactly ${needed} unique ${formatNote} strictly for:
+- Subject: "${params.subjectName}"
+- Topic: "${params.topic}"
+- Difficulty: "${diffPrompt}"
+
+CRITICAL RULES:
+1. Every single question MUST strictly test "${params.topic}" within "${params.subjectName}". Do NOT include questions from other topics.
+2. Each question must have exactly 4 distinct options.
+3. "correctAnswer" MUST be the exact string of one of the 4 options.
+4. "explanation" must clearly explain why the correct answer is right.
+5. Do NOT change the subject or topic name.
+
+Return a JSON array of objects matching this exact schema:
+[
+  {
+    "subject": "${params.subjectName}",
+    "topic": "${params.topic}",
+    "difficulty": "${isMixed ? 'Medium' : params.difficulty}",
+    "question": "...",
+    "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
+    "correctAnswer": "Option 1",
+    "explanation": "..."
+  }
+]`;
+
+    const validated: Question[] = [];
+    try {
+      const rawItems = await AIService.generateJSON<any[]>(userPrompt, systemPrompt);
+      if (!Array.isArray(rawItems)) {
+        logger.warn('[QuestionService] AI returned non-array JSON for question generation');
+        return [];
+      }
+
+      const now = new Date().toISOString();
+      for (let i = 0; i < rawItems.length; i++) {
+        const item = rawItems[i];
+        if (!item || typeof item.question !== 'string' || !Array.isArray(item.options)) continue;
+
+        const cleanOptions = item.options
+          .map((o: any) => String(o ?? '').trim())
+          .filter((o: string) => o.length > 0);
+        if (cleanOptions.length < 4) continue;
+
+        // Resolve correctAnswer index strictly against options
+        const ansRaw = String(item.correctAnswer ?? '').trim();
+        let correctIdx = cleanOptions.findIndex((o: string) => o === ansRaw);
+        if (correctIdx === -1) {
+          correctIdx = cleanOptions.findIndex((o: string) => o.toLowerCase() === ansRaw.toLowerCase());
+        }
+        if (correctIdx === -1) {
+          correctIdx = this.resolveCorrectOptionIndex(ansRaw, cleanOptions);
+          // Ensure resolveCorrectOptionIndex didn't silently default to 0 when answer doesn't match
+          if (correctIdx === 0 && !['a', '0', '1', cleanOptions[0].toLowerCase()].includes(ansRaw.toLowerCase())) {
+            continue;
+          }
+        }
+
+        const rawDiff = String(item.difficulty || (isMixed ? 'medium' : params.difficulty)).toLowerCase();
+        const normalizedDiff: 'easy' | 'medium' | 'hard' =
+          rawDiff === 'easy' ? 'easy' : rawDiff === 'hard' ? 'hard' : 'medium';
+
+        // Enforce requested difficulty when not mixed
+        if (!isMixed && normalizedDiff !== params.difficulty.toLowerCase()) {
+          continue;
+        }
+
+        const explanation = typeof item.explanation === 'string' && item.explanation.trim().length > 5
+          ? item.explanation.trim()
+          : '';
+        if (!explanation) continue;
+
+        const qHash = this.computeQuestionHash(item.question, cleanOptions);
+        if (params.existingHashes.has(qHash)) continue;
+
+        const candidate: Question = {
+          id: `ai_${params.subjectSlug}_${Date.now()}_${i}`,
+          source: 'ai_generated' as any,
+          category: params.subjectSlug,
+          topic: params.topic, // Force canonical requested topic after content validation
+          difficulty: normalizedDiff,
+          question: item.question.trim(),
+          options: cleanOptions.slice(0, 4),
+          correctOption: correctIdx,
+          explanation,
+          active: true,
+          importedAt: now,
+          updatedAt: now
+        };
+
+        if (!this.isQuestionContentValidForTopic(candidate, params.subjectSlug, params.topic)) {
+          continue;
+        }
+
+        params.existingHashes.add(qHash);
+        validated.push(candidate);
+        if (validated.length >= needed) break;
+      }
+    } catch (err: any) {
+      logger.warn('[QuestionService] AI question generation failed', { error: err.message, topic: params.topic });
+    }
+
+    return validated;
+  }
+
+  /**
    * Practice Questions Retrieval Engine
-   * Retrieves authoritative questions strictly matching subject, topic, and subtopic filters.
+   * Retrieves authoritative questions strictly matching subject, topic, and difficulty filters.
    * NEVER mixes questions from unrelated topics or broader subjects when a topic is selected.
    */
   public static async getPracticeQuestions(params: {
@@ -285,16 +457,28 @@ export class QuestionService {
     preferredDifficulty?: string;
     topic?: string;
     subtopic?: string;
+    questionType?: 'mcq' | 'coding';
   }): Promise<{ questions: Question[]; matchedTopicCount: number; requestedCount: number }> {
     const count = Math.max(1, params.count || 10);
     const subjectSlug = this.normalizeSubjectSlug(params.category);
+    const subjectName = SUBJECTS[subjectSlug]?.name || params.category;
     const diffUpper = (params.preferredDifficulty || 'medium').charAt(0).toUpperCase() + (params.preferredDifficulty || 'medium').slice(1).toLowerCase();
     const isMixed = !params.preferredDifficulty || params.preferredDifficulty.toLowerCase() === 'mixed' || params.preferredDifficulty.toLowerCase() === 'all';
     const topicRaw = params.topic && params.topic.trim() !== '' && params.topic !== 'All' ? params.topic.trim() : null;
     const subtopicRaw = params.subtopic && params.subtopic.trim() !== '' && params.subtopic !== 'All' ? params.subtopic.trim() : null;
 
     const uniqueMap = new Map<string, Question>();
+    const seenHashes = new Set<string>();
     let matchedTopicCount = 0;
+
+    const addIfValid = (q: Question) => {
+      if (uniqueMap.has(q.id)) return;
+      const hash = this.computeQuestionHash(q.question || '', q.options || []);
+      if (seenHashes.has(hash)) return;
+      if (topicRaw && !this.isQuestionContentValidForTopic(q, subjectSlug, topicRaw)) return;
+      seenHashes.add(hash);
+      uniqueMap.set(q.id, q);
+    };
 
     try {
       // 1. STRICT TOPIC FILTERING
@@ -341,12 +525,10 @@ export class QuestionService {
             if (!topicError && Array.isArray(topicData) && topicData.length > 0) {
               for (const row of topicData) {
                 const q = this.mapDbRowToQuestion(row);
-                // Strict verification against topic and subtopic
+                // Strict verification against topic and optional legacy subtopic
                 if (isTopicMatch(q.topic, topicRaw)) {
                   if (!subtopicRaw || isSubtopicMatch(q.subtopic, subtopicRaw)) {
-                    if (!uniqueMap.has(q.id)) {
-                      uniqueMap.set(q.id, q);
-                    }
+                    addIfValid(q);
                   }
                 }
               }
@@ -356,7 +538,7 @@ export class QuestionService {
           }
         }
 
-        // B. Curated local bank questions strictly matching topic and subtopic
+        // B. Curated local bank questions strictly matching topic
         const localBank = getCuratedBank();
         const localMatching = localBank.filter(q => {
           if (this.normalizeSubjectSlug(q.category) !== subjectSlug) return false;
@@ -365,37 +547,54 @@ export class QuestionService {
           return true;
         });
 
-        // Add matching local questions
         for (const q of localMatching) {
-          if (!uniqueMap.has(q.id)) {
-            uniqueMap.set(q.id, q);
-          }
-        }
-
-        matchedTopicCount = uniqueMap.size;
-
-        // C. Check availability - NEVER SILENTLY FILL WITH UNRELATED QUESTIONS!
-        const filterDescriptor = subtopicRaw ? `topic "${topicRaw}" (subtopic: "${subtopicRaw}")` : `topic "${topicRaw}"`;
-        if (uniqueMap.size === 0) {
-          throw new Error(`No questions found matching your selected ${filterDescriptor}. Please choose another topic or difficulty.`);
+          addIfValid(q);
         }
 
         // Filter strictly by preferred difficulty if specified
         let candidates = Array.from(uniqueMap.values());
         if (!isMixed && ['Easy', 'Medium', 'Hard'].includes(diffUpper)) {
-          const diffMatches = candidates.filter(q => q.difficulty.toLowerCase() === diffUpper.toLowerCase());
-          if (diffMatches.length >= count) {
-            candidates = diffMatches;
-          } else if (diffMatches.length > 0) {
-            throw new Error(`Not enough questions available for ${filterDescriptor} with ${diffUpper} difficulty. Only ${diffMatches.length} question(s) found with difficulty "${diffUpper}", but ${count} were requested. Please select a lower question count or try another difficulty.`);
-          } else {
-            throw new Error(`No questions found with difficulty "${diffUpper}" matching your selected ${filterDescriptor}. Please choose another difficulty.`);
+          candidates = candidates.filter(q => q.difficulty.toLowerCase() === diffUpper.toLowerCase());
+        }
+
+        // C. Generate additional validated questions via AI if bank has fewer than requested count
+        if (candidates.length < count && !subtopicRaw) {
+          const shortfall = count - candidates.length;
+          const aiQuestions = await this.generateValidatedAIQuestions({
+            subjectSlug,
+            subjectName,
+            topic: topicRaw,
+            difficulty: isMixed ? 'mixed' : diffUpper.toLowerCase(),
+            count: shortfall,
+            questionType: params.questionType,
+            existingHashes: seenHashes
+          });
+
+          for (const aiQ of aiQuestions) {
+            uniqueMap.set(aiQ.id, aiQ);
+            candidates.push(aiQ);
           }
-        } else if (candidates.length < count) {
+        }
+
+        matchedTopicCount = candidates.length;
+
+        // D. Strict shortage reporting - NEVER SILENTLY FILL WITH UNRELATED TOPICS!
+        const filterDescriptor = subtopicRaw ? `topic "${topicRaw}" (subtopic: "${subtopicRaw}")` : `topic "${topicRaw}"`;
+        if (candidates.length === 0) {
+          if (!isMixed && ['Easy', 'Medium', 'Hard'].includes(diffUpper) && uniqueMap.size > 0) {
+            throw new Error(`No questions found with difficulty "${diffUpper}" matching your selected ${filterDescriptor}. Please choose another difficulty or Mixed.`);
+          }
+          throw new Error(`No questions found matching your selected ${filterDescriptor}. Please choose another topic or difficulty.`);
+        }
+
+        if (candidates.length < count) {
+          if (!isMixed && ['Easy', 'Medium', 'Hard'].includes(diffUpper)) {
+            throw new Error(`Not enough questions available for ${filterDescriptor} with ${diffUpper} difficulty. Only ${candidates.length} question(s) found with difficulty "${diffUpper}", but ${count} were requested. Please select a lower question count or try Mixed difficulty.`);
+          }
           throw new Error(`Not enough questions available for ${filterDescriptor}. Only ${candidates.length} question(s) found in the question bank, but ${count} were requested. Please select a lower question count or try another topic.`);
         }
 
-        // D. Random selection strictly from matching topic pool
+        // E. Random selection strictly from matching topic pool
         for (let i = candidates.length - 1; i > 0; i--) {
           const j = Math.floor(Math.random() * (i + 1));
           [candidates[i], candidates[j]] = [candidates[j], candidates[i]];

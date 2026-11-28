@@ -28,6 +28,10 @@ class AIServiceClass {
   private readonly FAILURE_THRESHOLD = 5;
   private readonly CIRCUIT_RESET_TIME_MS = 60000; // 1 minute
 
+  public hasConfiguredProvider(): boolean {
+    return this.providers.some(p => Boolean(p.apiKey && p.apiKey.trim().length > 0)) && !this.isCircuitOpen();
+  }
+
   private isCircuitOpen(): boolean {
     if (this.failureCount >= this.FAILURE_THRESHOLD) {
       const now = Date.now();

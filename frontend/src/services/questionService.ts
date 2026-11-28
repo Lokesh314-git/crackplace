@@ -1,5 +1,6 @@
 import { supabase, isSupabaseConfigured } from '../config/supabase';
-import { SUBJECT_LIST, normalizeSubjectSlug, getTopicsForSubject, getSubtopicsForTopic } from '../constants/subjects';
+import { SUBJECT_LIST, normalizeSubjectSlug, getTopicsForSubject, getTopicObjectsForSubject } from '../constants/subjects';
+import type { TopicTaxonomy } from '../constants/subjects';
 
 export interface SupabaseQuestion {
   id: string;
@@ -147,66 +148,19 @@ class QuestionService {
   }
 
   /**
-   * Get unique topics for a subject from taxonomy and Supabase
+   * Get the Top 5 Common Topics for a subject strictly from canonical taxonomy
    */
   async getTopics(subjectSlug: string): Promise<string[]> {
     const normSlug = normalizeSubjectSlug(subjectSlug);
-    const standardTopics = getTopicsForSubject(normSlug);
-
-    if (!isSupabaseConfigured) {
-      return standardTopics;
-    }
-
-    try {
-      const { data, error } = await supabase
-        .from('questions')
-        .select('topic')
-        .eq('subject', normSlug)
-        .order('topic');
-
-      if (error || !data || data.length === 0) {
-        return standardTopics;
-      }
-
-      const dbTopics = data.map((d: any) => d.topic).filter(Boolean);
-      const combined = Array.from(new Set([...standardTopics, ...dbTopics])).sort((a, b) => a.localeCompare(b));
-      return combined.length > 0 ? combined : standardTopics;
-    } catch (err) {
-      console.warn('[QuestionService] Failed to fetch topics from database, using taxonomy:', err);
-      return standardTopics;
-    }
+    return getTopicsForSubject(normSlug);
   }
 
   /**
-   * Get unique subtopics for a subject and topic
+   * Get the Top 5 Common Topic objects (name, description, iconName) for a subject
    */
-  async getSubtopics(subjectSlug: string, topicName: string): Promise<string[]> {
+  getTopicCards(subjectSlug: string): TopicTaxonomy[] {
     const normSlug = normalizeSubjectSlug(subjectSlug);
-    const standardSubtopics = getSubtopicsForTopic(normSlug, topicName);
-
-    if (!isSupabaseConfigured || !topicName || topicName === 'All') {
-      return standardSubtopics;
-    }
-
-    try {
-      const { data, error } = await supabase
-        .from('questions')
-        .select('subtopic')
-        .eq('subject', normSlug)
-        .eq('topic', topicName)
-        .order('subtopic');
-
-      if (error || !data || data.length === 0) {
-        return standardSubtopics;
-      }
-
-      const dbSubtopics = data.map((d: any) => d.subtopic).filter(Boolean);
-      const combined = Array.from(new Set([...standardSubtopics, ...dbSubtopics])).sort((a, b) => a.localeCompare(b));
-      return combined.length > 0 ? combined : standardSubtopics;
-    } catch (err) {
-      console.warn('[QuestionService] Failed to fetch subtopics from database, using taxonomy:', err);
-      return standardSubtopics;
-    }
+    return getTopicObjectsForSubject(normSlug);
   }
 
   /**

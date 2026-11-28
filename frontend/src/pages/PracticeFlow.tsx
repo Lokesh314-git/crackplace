@@ -15,12 +15,60 @@ import {
   FaCoins, 
   FaAward,
   FaChevronRight,
-  FaChevronLeft
+  FaChevronLeft,
+  FaTerminal,
+  FaCubes,
+  FaLaptopCode,
+  FaPercent,
+  FaChartLine,
+  FaBriefcase,
+  FaGaugeHigh,
+  FaDice,
+  FaArrowUp19,
+  FaKey,
+  FaUsers,
+  FaChair,
+  FaDiagramProject,
+  FaBookOpen,
+  FaPenNib,
+  FaSpellCheck,
+  FaListOl,
+  FaMagnifyingGlass,
+  FaLayerGroup,
+  FaLink,
+  FaBarsStaggered,
+  FaSitemap,
+  FaArrowDownShortWide,
+  FaTableColumns,
+  FaCodeMerge,
+  FaShieldHalved,
+  FaBolt,
+  FaMicrochip,
+  FaMemory,
+  FaLock,
+  FaArrowsRotate,
+  FaGlobe,
+  FaRightLeft,
+  FaRoute,
+  FaBoxArchive,
+  FaShapes,
+  FaEyeSlash,
+  FaWrench,
+  FaStar,
+  FaHandshake,
+  FaScaleBalanced,
+  FaCompass,
+  FaCheck,
+  FaPython,
+  FaJava,
+  FaJs,
+  FaHtml5,
+  FaReact,
+  FaNodeJs
 } from 'react-icons/fa6';
 import { Card, Badge, Button, ProgressBar } from '../components/ui';
-import { SUBJECT_LIST, normalizeSubjectSlug } from '../constants/subjects';
-
-import { questionService } from '../services/questionService';
+import { SUBJECT_LIST, normalizeSubjectSlug, getTopicObjectsForSubject } from '../constants/subjects';
+import type { TopicTaxonomy } from '../constants/subjects';
 
 const ICON_MAP: Record<string, React.ReactNode> = {
   FaCalculator: <FaCalculator className="w-4 h-4" />,
@@ -30,11 +78,60 @@ const ICON_MAP: Record<string, React.ReactNode> = {
   FaNetworkWired: <FaNetworkWired className="w-4 h-4" />,
   FaBrain: <FaBrain className="w-4 h-4" />,
   FaFont: <FaFont className="w-4 h-4" />,
-  FaComments: <FaComments className="w-4 h-4" />
+  FaComments: <FaComments className="w-4 h-4" />,
+  FaTerminal: <FaTerminal className="w-4 h-4" />,
+  FaCubes: <FaCubes className="w-4 h-4" />,
+  FaLaptopCode: <FaLaptopCode className="w-4 h-4" />,
+  FaPercent: <FaPercent className="w-4 h-4" />,
+  FaChartLine: <FaChartLine className="w-4 h-4" />,
+  FaBriefcase: <FaBriefcase className="w-4 h-4" />,
+  FaGaugeHigh: <FaGaugeHigh className="w-4 h-4" />,
+  FaDice: <FaDice className="w-4 h-4" />,
+  FaArrowUp19: <FaArrowUp19 className="w-4 h-4" />,
+  FaKey: <FaKey className="w-4 h-4" />,
+  FaUsers: <FaUsers className="w-4 h-4" />,
+  FaChair: <FaChair className="w-4 h-4" />,
+  FaDiagramProject: <FaDiagramProject className="w-4 h-4" />,
+  FaBookOpen: <FaBookOpen className="w-4 h-4" />,
+  FaPenNib: <FaPenNib className="w-4 h-4" />,
+  FaSpellCheck: <FaSpellCheck className="w-4 h-4" />,
+  FaListOl: <FaListOl className="w-4 h-4" />,
+  FaMagnifyingGlass: <FaMagnifyingGlass className="w-4 h-4" />,
+  FaLayerGroup: <FaLayerGroup className="w-4 h-4" />,
+  FaLink: <FaLink className="w-4 h-4" />,
+  FaBarsStaggered: <FaBarsStaggered className="w-4 h-4" />,
+  FaSitemap: <FaSitemap className="w-4 h-4" />,
+  FaArrowDownShortWide: <FaArrowDownShortWide className="w-4 h-4" />,
+  FaTableColumns: <FaTableColumns className="w-4 h-4" />,
+  FaCodeMerge: <FaCodeMerge className="w-4 h-4" />,
+  FaShieldHalved: <FaShieldHalved className="w-4 h-4" />,
+  FaBolt: <FaBolt className="w-4 h-4" />,
+  FaMicrochip: <FaMicrochip className="w-4 h-4" />,
+  FaClock: <FaClock className="w-4 h-4" />,
+  FaMemory: <FaMemory className="w-4 h-4" />,
+  FaLock: <FaLock className="w-4 h-4" />,
+  FaArrowsRotate: <FaArrowsRotate className="w-4 h-4" />,
+  FaGlobe: <FaGlobe className="w-4 h-4" />,
+  FaRightLeft: <FaRightLeft className="w-4 h-4" />,
+  FaRoute: <FaRoute className="w-4 h-4" />,
+  FaBoxArchive: <FaBoxArchive className="w-4 h-4" />,
+  FaShapes: <FaShapes className="w-4 h-4" />,
+  FaEyeSlash: <FaEyeSlash className="w-4 h-4" />,
+  FaWrench: <FaWrench className="w-4 h-4" />,
+  FaStar: <FaStar className="w-4 h-4" />,
+  FaHandshake: <FaHandshake className="w-4 h-4" />,
+  FaScaleBalanced: <FaScaleBalanced className="w-4 h-4" />,
+  FaCompass: <FaCompass className="w-4 h-4" />,
+  FaPython: <FaPython className="w-4 h-4" />,
+  FaJava: <FaJava className="w-4 h-4" />,
+  FaJs: <FaJs className="w-4 h-4" />,
+  FaHtml5: <FaHtml5 className="w-4 h-4" />,
+  FaReact: <FaReact className="w-4 h-4" />,
+  FaNodeJs: <FaNodeJs className="w-4 h-4" />
 };
 
-const DIFFICULTIES = ['easy', 'medium', 'hard'] as const;
-const COUNTS = [5, 10, 15, 20];
+const DIFFICULTIES = ['easy', 'medium', 'hard', 'mixed'] as const;
+const COUNTS = [5, 10, 15, 20, 30];
 
 
 export const PracticeFlow: React.FC = () => {
@@ -64,12 +161,12 @@ export const PracticeFlow: React.FC = () => {
 
   const selectedCategory = normalizeSubjectSlug(subject || 'quantitative_aptitude');
   const subjectConfig = SUBJECT_LIST.find(s => s.slug === selectedCategory) || SUBJECT_LIST[0];
-  const [selectedTopic, setSelectedTopic] = useState('All');
-  const [availableTopics, setAvailableTopics] = useState<string[]>([]);
-  const [selectedSubtopic, setSelectedSubtopic] = useState('All');
-  const [availableSubtopics, setAvailableSubtopics] = useState<string[]>([]);
-  const [selectedDifficulty, setSelectedDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
+  const topTopics: TopicTaxonomy[] = getTopicObjectsForSubject(selectedCategory);
+
+  const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
+  const [selectedDifficulty, setSelectedDifficulty] = useState<'easy' | 'medium' | 'hard' | 'mixed'>('medium');
   const [selectedCount, setSelectedCount] = useState(5);
+  const [selectedQuestionType, setSelectedQuestionType] = useState<'mcq' | 'coding'>('mcq');
   // Local UI status
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const activeLaunchRef = useRef<AbortController | null>(null);
@@ -82,6 +179,8 @@ export const PracticeFlow: React.FC = () => {
     // When navigating to a subject without reviewId, initialize a clean session for this subject
     // This clears any previous assessment's scorecard or stale state from another subject
     initializeSubjectSession(selectedCategory);
+    setSelectedTopic(null);
+    setSelectedQuestionType('mcq');
     setErrorMessage(null);
   }, [selectedCategory, reviewId, initializeSubjectSession]);
 
@@ -142,39 +241,6 @@ export const PracticeFlow: React.FC = () => {
     return () => { isMounted = false; };
   }, [reviewId, token]);
 
-
-  // Load available topics whenever category changes
-  useEffect(() => {
-    let isMounted = true;
-    questionService.getTopics(selectedCategory).then((topics) => {
-      if (isMounted) {
-        setAvailableTopics(topics);
-        setSelectedTopic('All');
-        setSelectedSubtopic('All');
-        setAvailableSubtopics([]);
-      }
-    });
-    return () => { isMounted = false; };
-  }, [selectedCategory]);
-
-  // Load available subtopics whenever topic changes
-  useEffect(() => {
-    let isMounted = true;
-    if (selectedTopic && selectedTopic !== 'All') {
-      questionService.getSubtopics(selectedCategory, selectedTopic).then((subs) => {
-        if (isMounted) {
-          setAvailableSubtopics(subs);
-          setSelectedSubtopic('All');
-        }
-      });
-    } else {
-      setAvailableSubtopics([]);
-      setSelectedSubtopic('All');
-    }
-    return () => { isMounted = false; };
-  }, [selectedCategory, selectedTopic]);
-
-
   // Quiz active timer
   useEffect(() => {
     let timer: any;
@@ -186,8 +252,19 @@ export const PracticeFlow: React.FC = () => {
     return () => clearInterval(timer);
   }, [quizStatus, tickTimer]);
 
-  // Start Generation call using Supabase Question Bank
+  const handleSelectTopic = (topicName: string) => {
+    if (activeLaunchRef.current) {
+      activeLaunchRef.current.abort();
+      activeLaunchRef.current = null;
+    }
+    setSelectedTopic(topicName);
+    setErrorMessage(null);
+  };
+
+  // Start Generation call using Supabase Question Bank + AI validation
   const handleLaunchQuiz = async () => {
+    if (!selectedTopic) return;
+
     if (activeLaunchRef.current) {
       activeLaunchRef.current.abort();
     }
@@ -195,6 +272,7 @@ export const PracticeFlow: React.FC = () => {
     activeLaunchRef.current = abortController;
 
     const launchCategory = selectedCategory;
+    const launchTopic = selectedTopic;
     startQuizGeneration();
     setErrorMessage(null);
 
@@ -212,9 +290,9 @@ export const PracticeFlow: React.FC = () => {
         signal: abortController.signal,
         body: JSON.stringify({
           category: selectedCategory,
-          topic: selectedTopic !== 'All' ? selectedTopic : undefined,
-          subtopic: selectedSubtopic !== 'All' ? selectedSubtopic : undefined,
+          topic: selectedTopic,
           difficulty: selectedDifficulty,
+          questionType: subjectConfig.supportsCoding ? selectedQuestionType : 'mcq',
           count: selectedCount
         })
       });
@@ -229,8 +307,8 @@ export const PracticeFlow: React.FC = () => {
         throw new Error('No questions found matching your filter criteria. Please choose another topic or difficulty.');
       }
 
-      // Stale response guard: discard if user navigated to a different subject while fetch was inflight
-      if (selectedCategory !== launchCategory) {
+      // Stale response guard: discard if user changed subject or topic while fetch was inflight
+      if (selectedCategory !== launchCategory || selectedTopic !== launchTopic) {
         return;
       }
 
@@ -304,7 +382,7 @@ export const PracticeFlow: React.FC = () => {
   // State 1: Configuration View
   if (quizStatus === 'idle') {
     return (
-      <div className="max-w-2xl mx-auto space-y-6">
+      <div className="max-w-4xl mx-auto space-y-6">
         <Link 
           to="/practice" 
           onClick={handleBackToHub}
@@ -322,29 +400,28 @@ export const PracticeFlow: React.FC = () => {
               {subjectConfig.badge}
             </Badge>
           </div>
-          <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight mt-2">
+          <h1 className="text-2xl md:text-3xl font-bold text-text-primary tracking-tight mt-2">
             {subjectConfig.name}
           </h1>
-          <p className="text-sm text-slate-600 max-w-2xl">
-            Customize your practice session. Questions are curated from the centralized CrackPlace Question Bank.
+          <p className="text-sm text-text-secondary max-w-2xl">
+            Select one of the top 5 placement topics below, configure your session, and generate verified practice questions.
           </p>
         </div>
 
         {errorMessage && (
-          <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs space-y-2">
+          <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs space-y-2">
             <p className="font-medium">{errorMessage}</p>
             <div className="flex flex-wrap gap-2 pt-1">
-              {selectedTopic !== 'All' && (
+              {selectedDifficulty !== 'mixed' && (
                 <button
                   type="button"
                   onClick={() => {
-                    setSelectedTopic('All');
-                    setSelectedSubtopic('All');
+                    setSelectedDifficulty('mixed');
                     setErrorMessage(null);
                   }}
-                  className="px-2.5 py-1 rounded bg-amber-100 hover:bg-amber-200 text-amber-800 font-semibold text-[11px] transition-colors"
+                  className="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 font-semibold text-[11px] transition-colors cursor-pointer"
                 >
-                  Switch to All Topics
+                  Switch to Mixed Difficulty
                 </button>
               )}
               {selectedCount > 5 && (
@@ -354,7 +431,7 @@ export const PracticeFlow: React.FC = () => {
                     setSelectedCount(5);
                     setErrorMessage(null);
                   }}
-                  className="px-2.5 py-1 rounded bg-amber-100 hover:bg-amber-200 text-amber-800 font-semibold text-[11px] transition-colors"
+                  className="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 font-semibold text-[11px] transition-colors cursor-pointer"
                 >
                   Reduce to 5 Questions
                 </button>
@@ -362,94 +439,176 @@ export const PracticeFlow: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
-                  setSelectedTopic('All');
-                  setSelectedSubtopic('All');
                   setSelectedDifficulty('medium');
                   setSelectedCount(5);
                   setErrorMessage(null);
                 }}
-                className="px-2.5 py-1 rounded bg-white border border-amber-300 hover:bg-amber-50 text-amber-800 font-semibold text-[11px] transition-colors"
+                className="px-2.5 py-1 rounded bg-bg-surface border border-amber-500/30 hover:bg-amber-500/10 font-semibold text-[11px] transition-colors cursor-pointer"
               >
-                Reset All Filters
+                Reset Configuration
               </button>
             </div>
           </div>
         )}
 
+        {/* Step 1: Top 5 Common Topics */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold text-text-primary uppercase tracking-wider">
+              1. Choose a Topic (Top 5 Placement Topics)
+            </h2>
+            {selectedTopic && (
+              <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">
+                Selected: {selectedTopic}
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {topTopics.map((topicObj) => {
+              const isSelected = selectedTopic === topicObj.name;
+              return (
+                <button
+                  key={topicObj.name}
+                  type="button"
+                  onClick={() => handleSelectTopic(topicObj.name)}
+                  className={`p-4 rounded-xl border text-left transition-all duration-150 flex flex-col justify-between gap-3 cursor-pointer relative ${
+                    isSelected
+                      ? 'border-blue-600 bg-blue-600/10 ring-2 ring-blue-600/30 shadow-sm'
+                      : 'border-border-subtle bg-bg-surface hover:border-blue-500/50 hover:bg-bg-elevated/60'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2 w-full">
+                    <div className={`p-2.5 rounded-lg border shrink-0 ${
+                      isSelected
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-bg-elevated text-blue-600 dark:text-blue-400 border-border-subtle'
+                    }`}>
+                      {ICON_MAP[topicObj.iconName] || <FaCode className="w-4 h-4" />}
+                    </div>
+
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center border transition-colors ${
+                      isSelected
+                        ? 'bg-blue-600 border-blue-600 text-white'
+                        : 'border-border-subtle bg-bg-elevated/50'
+                    }`}>
+                      {isSelected && <FaCheck className="w-2.5 h-2.5" />}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <h3 className={`text-sm font-bold leading-snug ${
+                      isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-text-primary'
+                    }`}>
+                      {topicObj.name}
+                    </h3>
+                    <p className="text-xs text-text-muted leading-relaxed line-clamp-2">
+                      {topicObj.description}
+                    </p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Step 2: Quiz Configuration */}
         <Card>
           <div className="space-y-5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Topic Select */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">Topic</label>
-                <select
-                  value={selectedTopic}
-                  onChange={(e) => {
-                    setSelectedTopic(e.target.value);
-                    setSelectedSubtopic('All');
-                  }}
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-blue-600"
-                >
-                  <option value="All">All Topics</option>
-                  {availableTopics.map(t => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
-              </div>
+            <h2 className="text-sm font-bold text-text-primary uppercase tracking-wider">
+              2. Configure Quiz
+            </h2>
 
-              {/* Subtopic Select */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">Subtopic</label>
-                <select
-                  value={selectedSubtopic}
-                  onChange={(e) => setSelectedSubtopic(e.target.value)}
-                  disabled={selectedTopic === 'All' || availableSubtopics.length === 0}
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-blue-600 disabled:bg-slate-50 disabled:text-slate-400"
-                >
-                  <option value="All">{selectedTopic === 'All' ? 'All Subtopics' : 'All Subtopics'}</option>
-                  {availableSubtopics.map(st => (
-                    <option key={st} value={st}>{st}</option>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {/* Number of Questions */}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-text-secondary block">
+                  Number of Questions
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {COUNTS.map(count => (
+                    <button
+                      key={count}
+                      type="button"
+                      onClick={() => setSelectedCount(count)}
+                      className={`px-3.5 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                        selectedCount === count
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                          : 'bg-bg-elevated text-text-secondary border-border-subtle hover:border-blue-500/50'
+                      }`}
+                    >
+                      {count}
+                    </button>
                   ))}
-                </select>
+                </div>
               </div>
 
               {/* Difficulty */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">Difficulty</label>
-                <select
-                  value={selectedDifficulty}
-                  onChange={(e) => setSelectedDifficulty(e.target.value as any)}
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-blue-600"
-                >
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-text-secondary block">
+                  Difficulty Level
+                </label>
+                <div className="flex flex-wrap gap-2">
                   {DIFFICULTIES.map(diff => (
-                    <option key={diff} value={diff} className="capitalize">{diff}</option>
+                    <button
+                      key={diff}
+                      type="button"
+                      onClick={() => setSelectedDifficulty(diff)}
+                      className={`px-3.5 py-2 rounded-lg text-xs font-semibold capitalize border transition-all cursor-pointer ${
+                        selectedDifficulty === diff
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                          : 'bg-bg-elevated text-text-secondary border-border-subtle hover:border-blue-500/50'
+                      }`}
+                    >
+                      {diff}
+                    </button>
                   ))}
-                </select>
-              </div>
-
-              {/* Count */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">Questions</label>
-                <select
-                  value={selectedCount}
-                  onChange={(e) => setSelectedCount(Number(e.target.value))}
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-blue-600"
-                >
-                  {COUNTS.map(count => (
-                    <option key={count} value={count}>{count} Questions</option>
-                  ))}
-                </select>
+                </div>
               </div>
             </div>
+
+            {/* Question Type (Only where applicable) */}
+            {subjectConfig.supportsCoding && (
+              <div className="space-y-2 pt-1">
+                <label className="text-xs font-semibold text-text-secondary block">
+                  Question Type
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedQuestionType('mcq')}
+                    className={`px-4 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                      selectedQuestionType === 'mcq'
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                        : 'bg-bg-elevated text-text-secondary border-border-subtle hover:border-blue-500/50'
+                    }`}
+                  >
+                    Multiple Choice Questions (MCQ)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedQuestionType('coding')}
+                    className={`px-4 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                      selectedQuestionType === 'coding'
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                        : 'bg-bg-elevated text-text-secondary border-border-subtle hover:border-blue-500/50'
+                    }`}
+                  >
+                    Coding Questions
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="pt-2">
               <Button
                 variant="primary"
                 size="md"
                 onClick={handleLaunchQuiz}
+                disabled={!selectedTopic}
                 className="w-full"
               >
-                Start Practice
+                {selectedTopic ? `Generate Questions (${selectedTopic})` : 'Select a Topic to Continue'}
               </Button>
             </div>
           </div>
@@ -464,9 +623,9 @@ export const PracticeFlow: React.FC = () => {
       <div className="min-h-[50vh] flex flex-col items-center justify-center space-y-4 text-center">
         <div className="w-10 h-10 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
         <div className="space-y-1">
-          <h3 className="text-base font-bold text-slate-900">Loading Supabase Questions</h3>
-          <p className="text-xs text-slate-500 max-w-sm">
-            Retrieving authenticated questions for {subjectConfig.name} ({selectedDifficulty} tier)...
+          <h3 className="text-base font-bold text-text-primary">Generating {selectedTopic} Questions</h3>
+          <p className="text-xs text-text-muted max-w-sm">
+            Validating {selectedCount} {selectedDifficulty} question(s) for {subjectConfig.name} — {selectedTopic}...
           </p>
         </div>
       </div>

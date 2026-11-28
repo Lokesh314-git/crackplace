@@ -29,6 +29,7 @@ import { XpTransactionService } from './services/XpTransactionService';
 import { COSMETICS_CATALOG, checkIsLegendaryPlayer } from './utils/cosmetics';
 import { resolveUserAvatar, getAvatarImageUrl, getUserAvatarUrl } from './utils/avatarResolver';
 import { isUserExcludedFromLeaderboard, cleanupLeaderboardStaleRecords, invalidateLeaderboardCache } from './services/leaderboardCleanup';
+import { SUBJECTS, normalizeSubjectSlug, getTopicsForSubject, isTopicMatch } from './constants/subjects';
 import quizRouter from './routes/quiz';
 import codingRouter from './routes/coding';
 import interviewRouter from './routes/interview';
@@ -1321,14 +1322,40 @@ app.get('/api/auth/xp/transactions', verifyToken, async (req: AuthenticatedReque
 
 app.post('/api/auth/battle-room/create', strictAuthLimiter, verifyToken, async (req: AuthenticatedRequest, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
-  const { battleType, topic, subtopic, questionsCount, difficulty, timeLimit, isPrivate } = req.body;
+  const { battleType, topic, questionsCount, difficulty, timeLimit, isPrivate } = req.body;
 
   try {
     const validBattleTypes = [
       'Aptitude', 'DSA', 'DBMS', 'Operating Systems', 'Mixed', 'Technical', 'Reasoning', 'HR', 'Rapid Fire',
-      'quantitative_aptitude', 'dsa', 'dbms', 'operating_system', 'computer_network', 'logical_reasoning', 'verbal_ability', 'hr_behavioral'
+      ...Object.keys(SUBJECTS)
     ];
     const sanitizedBattleType = validBattleTypes.includes(battleType) ? battleType : 'DSA';
+    const subjectSlug = normalizeSubjectSlug(sanitizedBattleType);
+    const subjectName = SUBJECTS[subjectSlug]?.name || sanitizedBattleType;
+    const approvedTopics = getTopicsForSubject(subjectSlug);
+
+    let canonicalTopic: string | null = null;
+    if (topic !== undefined && topic !== null && String(topic).trim() !== '') {
+      const rawTopic = String(topic).trim();
+      const lowerTopic = rawTopic.toLowerCase();
+      if (lowerTopic === 'all' || lowerTopic === 'all topics' || lowerTopic === 'all topics (mixed)' || lowerTopic === 'mixed') {
+        return res.status(400).json({
+          error: 'Mixed topics are not allowed. Please select one specific topic.',
+          code: 'INVALID_TOPIC'
+        });
+      }
+
+      const matched = approvedTopics.find(t => isTopicMatch(t, rawTopic));
+      if (!matched) {
+        return res.status(400).json({
+          error: `Invalid topic "${rawTopic}" for subject "${subjectName}". Approved topics: ${approvedTopics.join(', ')}.`,
+          code: 'INVALID_TOPIC'
+        });
+      }
+      canonicalTopic = matched;
+    } else {
+      canonicalTopic = approvedTopics[0] || null;
+    }
 
     const validDifficulties = ['Easy', 'Medium', 'Hard', 'Mixed'];
     const sanitizedDifficulty = validDifficulties.includes(difficulty) ? difficulty : 'Medium';
@@ -1339,15 +1366,18 @@ app.post('/api/auth/battle-room/create', strictAuthLimiter, verifyToken, async (
     const prefixes: { [key: string]: string } = {
       'quantitative_aptitude': 'APT', 'Aptitude': 'APT',
       'dsa': 'DSA', 'DSA': 'DSA',
+      'programming': 'PRG',
       'dbms': 'DBM', 'DBMS': 'DBM',
       'operating_system': 'OPS', 'Operating Systems': 'OPS',
       'computer_network': 'NET', 'Technical': 'TEC',
+      'oops': 'OOP',
+      'web_development': 'WEB',
       'logical_reasoning': 'REA', 'Reasoning': 'REA',
       'verbal_ability': 'VER', 'English': 'VER',
       'hr_behavioral': 'HRC', 'HR': 'HRC',
       'Mixed': 'MIX', 'Rapid Fire': 'RAP'
     };
-    const pfx = prefixes[sanitizedBattleType] || 'BAT';
+    const pfx = prefixes[sanitizedBattleType] || prefixes[subjectSlug] || 'BAT';
 
     // Collision-safe room ID generation with retry loop
     let roomId = '';
@@ -1381,13 +1411,13 @@ app.post('/api/auth/battle-room/create', strictAuthLimiter, verifyToken, async (
       hostName: userData.displayName || 'Host Cadet',
       hostAvatar: userData.photoURL || '',
       battleType: sanitizedBattleType,
+      subject: subjectName,
       settings: {
         questionsCount: count,
         difficulty: sanitizedDifficulty,
         timeLimit: limit,
         isPrivate: isPrivate === undefined ? true : !!isPrivate,
-        topic: topic ? String(topic).trim() : null,
-        subtopic: subtopic ? String(subtopic).trim() : null
+        topic: canonicalTopic
       },
       status: 'waiting',
       createdTime: now.toISOString(),

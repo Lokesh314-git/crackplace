@@ -147,14 +147,14 @@ export function formatReviewQuestions(questions: any[], userAnswers: Record<stri
   });
 }
 
-import { SUBJECT_LIST, getTopicsForSubject, getSubtopicsForTopic } from '../constants/subjects';
+import { SUBJECT_LIST, getTopicsForSubject, getTopicObjectsForSubject, getSubtopicsForTopic } from '../constants/subjects';
 
 const generateQuizSchema = z.object({
   category: z.string().optional(),
   subjectSlug: z.string().optional(),
   topic: z.string().optional(),
-  subtopic: z.string().optional(),
   difficulty: z.enum(['easy', 'medium', 'hard', 'mixed']).default('medium'),
+  questionType: z.enum(['mcq', 'coding']).optional().default('mcq'),
   count: z.number().min(1).max(50).default(10),
   language: z.string().default('English'),
   company: z.string().optional()
@@ -163,7 +163,7 @@ const generateQuizSchema = z.object({
 });
 
 /**
- * Public taxonomy endpoint for subjects, topics, and subtopics
+ * Public taxonomy endpoint for subjects and Top 5 common topics
  */
 router.get('/taxonomy', (_req, res) => {
   res.json({ subjects: SUBJECT_LIST });
@@ -194,7 +194,8 @@ router.get('/taxonomy/:slug/count', async (req, res) => {
 
 router.get('/taxonomy/:slug/topics', (req, res) => {
   const topics = getTopicsForSubject(req.params.slug);
-  res.json({ topics });
+  const topicObjects = getTopicObjectsForSubject(req.params.slug);
+  res.json({ topics, topicObjects });
 });
 
 router.get('/taxonomy/:slug/topics/:topic/subtopics', (req, res) => {
@@ -215,18 +216,18 @@ router.post('/generate', optionalAuth, async (req: AuthenticatedRequest, res) =>
 
   const rawData = parseResult.data;
   const category = rawData.category || rawData.subjectSlug!;
-  const { topic, subtopic, difficulty, count, language, company } = rawData;
+  const { topic, difficulty, questionType, count, language, company } = rawData;
 
   try {
-    console.log(`[QUIZ API] Loading practice quiz: ${category} (topic: ${topic || 'all'}, subtopic: ${subtopic || 'all'}, diff: ${difficulty}), count: ${count}`);
+    console.log(`[QUIZ API] Loading practice quiz: ${category} (topic: ${topic || 'all'}, type: ${questionType}, diff: ${difficulty}), count: ${count}`);
 
-    // Retrieve authoritative questions with strict topic/subtopic filtering
+    // Retrieve authoritative questions with strict subject/topic/difficulty filtering
     const { questions, matchedTopicCount, requestedCount } = await QuestionService.getPracticeQuestions({
       category,
       count,
       preferredDifficulty: difficulty,
       topic,
-      subtopic
+      questionType
     });
 
     if (!questions || questions.length === 0) {
