@@ -72,6 +72,7 @@ export class BattleEngine {
   private static io: Server;
   private static battleTimerIntervals = new Map<string, NodeJS.Timeout>();
   private static concludingBattles = new Set<string>();
+  private static battleLocks = new Map<string, Promise<void>>();
   private static matchmakingLockChain: Promise<void> = Promise.resolve();
   private static sweepInterval: NodeJS.Timeout | null = null;
   private static readonly QUEUE_TICKET_TTL_MS = 180_000; // 3 minutes max queue lifetime
@@ -95,6 +96,28 @@ export class BattleEngine {
       return await fn();
     } finally {
       release();
+    }
+  }
+
+  /**
+   * Per-battle async mutex to serialize Redis read-modify-write operations (prevents simultaneous submitAnswer races)
+   */
+  private static async withBattleLock<T>(battleId: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.battleLocks.get(battleId) || Promise.resolve();
+    let release!: () => void;
+    const next = new Promise<void>(resolve => {
+      release = resolve;
+    });
+    const chained = prev.then(() => next, () => next);
+    this.battleLocks.set(battleId, chained);
+    await prev;
+    try {
+      return await fn();
+    } finally {
+      release();
+      if (this.battleLocks.get(battleId) === chained) {
+        this.battleLocks.delete(battleId);
+      }
     }
   }
 
@@ -873,140 +896,154 @@ export class BattleEngine {
    */
   public static async submitAnswer(
     socket: Socket,
-    data: { battleId: string; questionIndex: number; selectedOption: number }
+    data: { battleId: string; questionIndex: number; selectedOption: number; responseTimeMs?: number }
   ) {
     const userId = socket.data.userId;
-    if (!userId) {
+    if (!userId || !data?.battleId) {
       socket.emit('battle_error', { message: 'Unauthorized submission' });
       return;
     }
 
-    const battle = await this.getBattle(data.battleId);
-    if (!battle) {
-      socket.emit('battle_error', { message: 'Battle session not found or expired.' });
-      return;
-    }
+    let shouldConclude = false;
 
-    if (battle.status !== 'ACTIVE' || battle.concluded) {
-      socket.emit('battle_error', { message: 'Battle is no longer active.' });
-      return;
-    }
+    await this.withBattleLock(data.battleId, async () => {
+      const battle = await this.getBattle(data.battleId);
+      if (!battle) {
+        socket.emit('battle_error', { message: 'Battle session not found or expired.' });
+        return;
+      }
 
-    const player = battle.players[userId];
-    if (!player) {
-      socket.emit('battle_error', { message: 'Player not enrolled in this battle.' });
-      return;
-    }
+      if (battle.status !== 'ACTIVE' || battle.concluded) {
+        socket.emit('battle_error', { message: 'Battle is no longer active.' });
+        return;
+      }
 
-    const qIndex = data.questionIndex;
-    if (qIndex < 0 || qIndex >= battle.questions.length) {
-      socket.emit('battle_error', { message: 'Invalid question index.' });
-      return;
-    }
+      const player = battle.players[userId];
+      if (!player) {
+        socket.emit('battle_error', { message: 'Player not enrolled in this battle.' });
+        return;
+      }
 
-    const authoritativeQuestion = battle.questions[qIndex];
-    const mapping = player.optionMappings?.[qIndex];
+      const qIndex = data.questionIndex;
+      if (qIndex < 0 || qIndex >= battle.questions.length) {
+        socket.emit('battle_error', { message: 'Invalid question index.' });
+        return;
+      }
 
-    // Compute player's displayed correct option for UI feedback
-    const displayedCorrectOption = mapping && Array.isArray(mapping)
-      ? mapping.indexOf(authoritativeQuestion.correctOption)
-      : authoritativeQuestion.correctOption;
+      const authoritativeQuestion = battle.questions[qIndex];
+      const mapping = player.optionMappings?.[qIndex];
 
-    // Idempotency: If player already submitted for this question, return existing result
-    if (player.submissions && player.submissions[qIndex]) {
-      const prevSub = player.submissions[qIndex];
-      logger.warn('Duplicate answer submission safely returned cached evaluation', { userId, battleId: data.battleId, qIndex });
+      // Compute player's displayed correct option for UI feedback
+      const displayedCorrectOption = mapping && Array.isArray(mapping)
+        ? mapping.indexOf(authoritativeQuestion.correctOption)
+        : authoritativeQuestion.correctOption;
+
+      // Idempotency: If player already submitted for this question, return existing result
+      if (player.submissions && player.submissions[qIndex]) {
+        const prevSub = player.submissions[qIndex];
+        logger.warn('Duplicate answer submission safely returned cached evaluation', { userId, battleId: data.battleId, qIndex });
+        socket.emit('answer_evaluated', {
+          questionIndex: qIndex,
+          selectedOption: prevSub.selectedOption,
+          isCorrect: prevSub.isCorrect,
+          score: player.score,
+          pointsAwarded: prevSub.points,
+          explanation: authoritativeQuestion.explanation || '',
+          correctOption: displayedCorrectOption !== -1 ? displayedCorrectOption : authoritativeQuestion.correctOption,
+          nextQuestionIndex: player.progressIndex,
+          totalQuestions: battle.totalQuestions
+        });
+        return;
+      }
+
+      const isTimeout = data.selectedOption === -1;
+      // Map displayed option index back to original database option index
+      const originalSelectedOption = isTimeout
+        ? -1
+        : (mapping && Array.isArray(mapping) && typeof mapping[data.selectedOption] === 'number'
+          ? mapping[data.selectedOption]
+          : data.selectedOption);
+
+      const isCorrect = !isTimeout && originalSelectedOption === authoritativeQuestion.correctOption;
+
+      const timeLimitMs = (battle.timeLimitPerQuestion || 30) * 1000;
+      const safeResponseMs = typeof data.responseTimeMs === 'number' && data.responseTimeMs > 0
+        ? Math.min(timeLimitMs, Math.max(100, data.responseTimeMs))
+        : 5000;
+
+      const scoreResult = ScoreCalculator.calculateQuestionScore({
+        correct: isCorrect,
+        responseTimeMs: safeResponseMs,
+        timeLimitMs,
+        difficulty: 'Medium'
+      });
+
+      const pointsAwarded = scoreResult.pointsAwarded;
+
+      player.score += pointsAwarded;
+      player.progressIndex = Math.max(player.progressIndex || 0, qIndex + 1);
+      if (!player.submissions) player.submissions = {};
+      player.submissions[qIndex] = {
+        selectedOption: data.selectedOption,
+        isCorrect,
+        points: pointsAwarded,
+        timeMs: Date.now()
+      };
+
+      logger.info('Battle answer validated', {
+        event: 'answer_validation',
+        battleId: data.battleId,
+        userId,
+        questionIndex: qIndex,
+        questionId: authoritativeQuestion.id,
+        displayedSelectedOption: data.selectedOption,
+        originalSelectedOption,
+        authoritativeCorrectOption: authoritativeQuestion.correctOption,
+        displayedCorrectOption,
+        isCorrect,
+        pointsAwarded,
+        scoreAfter: player.score,
+        progressIndexAfter: player.progressIndex
+      });
+
+      const isFinalQuestion = player.progressIndex >= battle.totalQuestions;
+      if (isFinalQuestion) {
+        player.finished = true;
+      }
+
+      await this.saveBattle(battle);
+
+      // Send authoritative response back to the answering player using their displayed option coordinates
       socket.emit('answer_evaluated', {
         questionIndex: qIndex,
-        selectedOption: prevSub.selectedOption,
-        isCorrect: prevSub.isCorrect,
+        selectedOption: data.selectedOption,
+        isCorrect,
         score: player.score,
-        pointsAwarded: prevSub.points,
+        pointsAwarded,
         explanation: authoritativeQuestion.explanation || '',
         correctOption: displayedCorrectOption !== -1 ? displayedCorrectOption : authoritativeQuestion.correctOption,
         nextQuestionIndex: player.progressIndex,
         totalQuestions: battle.totalQuestions
       });
-      return;
-    }
 
-    const isTimeout = data.selectedOption === -1;
-    // Map displayed option index back to original database option index
-    const originalSelectedOption = isTimeout
-      ? -1
-      : (mapping && Array.isArray(mapping) && typeof mapping[data.selectedOption] === 'number'
-        ? mapping[data.selectedOption]
-        : data.selectedOption);
+      // Broadcast synchronized progress ONLY to opponent (never overwrite sender's opponentProgress)
+      const stepPayload = {
+        uid: userId,
+        score: player.score,
+        progressIndex: player.progressIndex,
+        finished: player.finished
+      };
+      if (typeof socket.to === 'function') {
+        socket.to(data.battleId).emit('step_update', stepPayload);
+      } else if (this.io) {
+        this.io.of('/battle').to(data.battleId).emit('step_update', stepPayload);
+      }
 
-    const isCorrect = !isTimeout && originalSelectedOption === authoritativeQuestion.correctOption;
-
-    const timeLimitMs = (battle.timeLimitPerQuestion || 30) * 1000;
-    const scoreResult = ScoreCalculator.calculateQuestionScore({
-      correct: isCorrect,
-      responseTimeMs: 5000,
-      timeLimitMs,
-      difficulty: 'Medium'
+      // Check if all players have finished
+      shouldConclude = Object.values(battle.players).every(p => p.finished);
     });
 
-    const pointsAwarded = scoreResult.pointsAwarded;
-
-    player.score += pointsAwarded;
-    player.progressIndex = qIndex + 1;
-    if (!player.submissions) player.submissions = {};
-    player.submissions[qIndex] = {
-      selectedOption: data.selectedOption,
-      isCorrect,
-      points: pointsAwarded,
-      timeMs: Date.now()
-    };
-
-    logger.info('Battle answer validated', {
-      event: 'answer_validation',
-      battleId: data.battleId,
-      userId,
-      questionIndex: qIndex,
-      questionId: authoritativeQuestion.id,
-      displayedSelectedOption: data.selectedOption,
-      originalSelectedOption,
-      authoritativeCorrectOption: authoritativeQuestion.correctOption,
-      displayedCorrectOption,
-      isCorrect,
-      pointsAwarded,
-      scoreAfter: player.score,
-      progressIndexAfter: player.progressIndex
-    });
-
-    const isFinalQuestion = player.progressIndex >= battle.totalQuestions;
-    if (isFinalQuestion) {
-      player.finished = true;
-    }
-
-    await this.saveBattle(battle);
-
-    // Send authoritative response back to the answering player using their displayed option coordinates
-    socket.emit('answer_evaluated', {
-      questionIndex: qIndex,
-      selectedOption: data.selectedOption,
-      isCorrect,
-      score: player.score,
-      pointsAwarded,
-      explanation: authoritativeQuestion.explanation || '',
-      correctOption: displayedCorrectOption !== -1 ? displayedCorrectOption : authoritativeQuestion.correctOption,
-      nextQuestionIndex: player.progressIndex,
-      totalQuestions: battle.totalQuestions
-    });
-
-    // Broadcast synchronized progress to opponent
-    this.io.of('/battle').to(data.battleId).emit('step_update', {
-      uid: userId,
-      score: player.score,
-      progressIndex: player.progressIndex,
-      finished: player.finished
-    });
-
-    // Check if all players have finished
-    const allFinished = Object.values(battle.players).every(p => p.finished);
-    if (allFinished) {
+    if (shouldConclude) {
       logger.info('All players completed questions. Concluding match immediately.', { battleId: data.battleId });
       await this.concludeBattle(data.battleId, 'all_players_finished');
     }

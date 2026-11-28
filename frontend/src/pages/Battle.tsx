@@ -268,6 +268,13 @@ const BattleInner: React.FC = () => {
   const [opponentProgress, setOpponentProgress] = useState({ progressIndex: 0, score: 0, finished: false });
   const [battleResult, setBattleResult] = useState<BattleResult | any | null>(null);
   const [questionTimeLeft, setQuestionTimeLeft] = useState(30);
+  const [battleTimeLimit, setBattleTimeLimit] = useState(30);
+  const [battleFlowState, setBattleFlowState] = useState<
+    'MATCHED' | 'INITIALIZING' | 'QUESTION_ACTIVE' | 'ANSWER_SUBMITTED' | 'WAITING_FOR_OPPONENT' | 'ADVANCING_QUESTION' | 'COMPLETED' | 'CANCELLED' | 'ERROR'
+  >('INITIALIZING');
+  const advanceTimerRef = useRef<number | null>(null);
+  const submitRetryTimerRef = useRef<number | null>(null);
+  const questionStartTimeRef = useRef<number>(Date.now());
   const [battleAlert, setBattleAlert] = useState<{ text: string; type: 'info' | 'success' | 'error' } | null>(null);
   const [lobbyLoading, setLobbyLoading] = useState(false);
   const [lobbyLoadingMessage, setLobbyLoadingMessage] = useState('Preparing battle...');
@@ -880,6 +887,23 @@ const BattleInner: React.FC = () => {
         questionsRef.current = data.quiz;
       }
       const restoredIdx = typeof data.currentQuestionIndex === 'number' ? data.currentQuestionIndex : 0;
+      if (typeof data.timeLimitPerQuestion === 'number' && data.timeLimitPerQuestion > 0) {
+        setBattleTimeLimit(data.timeLimitPerQuestion);
+      }
+
+      // Prevent mid-question restore from wiping out an active in-flight submission for the same question
+      if (statusRef.current === 'battle' && restoredIdx === currentIndexRef.current && isSubmittingRef.current) {
+        if (typeof data.playerScore === 'number') setPlayerScore(data.playerScore);
+        if (data.opponentProgress) {
+          setOpponentProgress({
+            progressIndex: data.opponentProgress.progressIndex || 0,
+            score: data.opponentProgress.score || 0,
+            finished: data.opponentProgress.finished || false
+          });
+        }
+        return;
+      }
+
       setCurrentIndex(restoredIdx);
       currentIndexRef.current = restoredIdx;
       setPlayerCompletedQuestions(restoredIdx);
@@ -891,6 +915,7 @@ const BattleInner: React.FC = () => {
       isSubmittingRef.current = false;
 
       if (typeof data.playerScore === 'number') setPlayerScore(data.playerScore);
+      setBattleFlowState(restoredIdx >= (data.quiz?.length || questionsRef.current.length || 1) ? 'WAITING_FOR_OPPONENT' : 'QUESTION_ACTIVE');
       setStatus('battle');
       statusRef.current = 'battle';
 
@@ -901,7 +926,9 @@ const BattleInner: React.FC = () => {
           finished: data.opponentProgress.finished || false
         });
       }
-      setBattleAlert({ text: '🔄 Battle Restored', type: 'info' });
+      if (restoredIdx > 0) {
+        setBattleAlert({ text: '🔄 Battle Restored', type: 'info' });
+      }
     };
 
     const onPlayerDisconnected = (data: { userId: string; gracePeriodSeconds: number }) => {
@@ -985,6 +1012,11 @@ const BattleInner: React.FC = () => {
       nextQuestionIndex?: number;
       totalQuestions?: number;
     }) => {
+      if (submitRetryTimerRef.current) {
+        window.clearTimeout(submitRetryTimerRef.current);
+        submitRetryTimerRef.current = null;
+      }
+
       setPlayerScore(data.score);
       const nextProgress = typeof data.nextQuestionIndex === 'number'
         ? data.nextQuestionIndex
@@ -1002,6 +1034,7 @@ const BattleInner: React.FC = () => {
         pointsAwarded: data.pointsAwarded
       };
       setAnswerFeedback(feedback);
+      setBattleFlowState('ADVANCING_QUESTION');
 
       const ptsStr = (typeof data.pointsAwarded === 'number' && data.pointsAwarded > 0) ? `+${data.pointsAwarded}` : (data.isCorrect ? '+20' : '+0');
       setBattleAlert({
@@ -1009,7 +1042,11 @@ const BattleInner: React.FC = () => {
         type: data.isCorrect ? 'success' : 'error'
       });
 
-      setTimeout(() => {
+      if (advanceTimerRef.current) {
+        window.clearTimeout(advanceTimerRef.current);
+      }
+      advanceTimerRef.current = window.setTimeout(() => {
+        advanceTimerRef.current = null;
         const nextIdx = typeof data.nextQuestionIndex === 'number'
           ? data.nextQuestionIndex
           : (currentIndexRef.current + 1);
@@ -1022,10 +1059,15 @@ const BattleInner: React.FC = () => {
         setIsSubmittingAnswer(false);
         isSubmittingRef.current = false;
         setBattleAlert(null);
+        const totalQ = data.totalQuestions || questionsRef.current.length || 5;
+        setBattleFlowState(nextIdx >= totalQ ? 'WAITING_FOR_OPPONENT' : 'QUESTION_ACTIVE');
       }, 1200);
     };
 
     const onStepUpdate = (data: { uid: string; score: number; progressIndex: number; finished: boolean }) => {
+      // Never overwrite opponentProgress with our own echoed step_update
+      if (data.uid && data.uid === userProfile?.uid) return;
+
       setOpponentProgress({
         progressIndex: data.progressIndex,
         score: data.score,
@@ -1100,6 +1142,8 @@ const BattleInner: React.FC = () => {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      if (advanceTimerRef.current) window.clearTimeout(advanceTimerRef.current);
+      if (submitRetryTimerRef.current) window.clearTimeout(submitRetryTimerRef.current);
       if (matchmakingSocket.current) matchmakingSocket.current.disconnect();
       if (battleSocket.current) battleSocket.current.disconnect();
     };
@@ -1163,8 +1207,9 @@ const BattleInner: React.FC = () => {
   // Question Local Timer Effect
   useEffect(() => {
     if (status === 'battle' && questions.length > 0 && currentIndex < questions.length && selectedOption === null) {
-      const limit = lobbyRoom?.settings?.timeLimit || 30;
+      const limit = lobbyRoom?.settings?.timeLimit || battleTimeLimit || 30;
       setQuestionTimeLeft(limit);
+      questionStartTimeRef.current = Date.now();
 
       const timer = setInterval(() => {
         setQuestionTimeLeft(prev => {
@@ -1179,7 +1224,7 @@ const BattleInner: React.FC = () => {
 
       return () => clearInterval(timer);
     }
-  }, [status, currentIndex, selectedOption, questions.length, lobbyRoom]);
+  }, [status, currentIndex, selectedOption, questions.length, battleTimeLimit]);
 
   // Battle Finalization Safety Recovery (polls server state when all questions submitted)
   useEffect(() => {
@@ -1197,25 +1242,48 @@ const BattleInner: React.FC = () => {
     };
   }, [status, currentIndex, questions.length, battleId]);
 
-  // 3. Question submit handler (Server-Authoritative)
+  // 3. Question submit handler (Server-Authoritative with retry safety)
   const handleAnswerSubmit = (optionIdx: number) => {
     if (selectedOptionRef.current !== null || isSubmittingRef.current || !battleId) return;
-    
+
+    const qIdx = currentIndexRef.current;
+    const responseTimeMs = Math.max(100, Date.now() - questionStartTimeRef.current);
+
     setIsSubmittingAnswer(true);
     isSubmittingRef.current = true;
     setSelectedOption(optionIdx);
     selectedOptionRef.current = optionIdx;
+    setBattleFlowState('ANSWER_SUBMITTED');
 
     if (optionIdx === -1) {
       setBattleAlert({ text: '⏳ Time Out!', type: 'error' });
     }
 
-    // Send authoritative submission to backend
-    battleSocket.current?.emit('submit_answer', {
-      battleId,
-      questionIndex: currentIndexRef.current,
-      selectedOption: optionIdx
-    });
+    const emitSubmission = () => {
+      if (battleSocket.current && battleSocket.current.connected) {
+        battleSocket.current.emit('submit_answer', {
+          battleId,
+          questionIndex: qIdx,
+          selectedOption: optionIdx,
+          responseTimeMs
+        });
+      } else if (battleSocket.current) {
+        battleSocket.current.connect();
+      }
+    };
+
+    emitSubmission();
+
+    // Safety retry if answer_evaluated is delayed or packet was dropped during reconnect
+    if (submitRetryTimerRef.current) {
+      window.clearTimeout(submitRetryTimerRef.current);
+    }
+    submitRetryTimerRef.current = window.setTimeout(() => {
+      if (isSubmittingRef.current && currentIndexRef.current === qIdx && statusRef.current === 'battle') {
+        emitSubmission();
+        battleSocket.current?.emit('get_battle_state', { battleId });
+      }
+    }, 3000);
   };
 
 
@@ -2316,11 +2384,23 @@ const BattleInner: React.FC = () => {
               <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
                 Question {currentIndex + 1}
               </span>
-              {currentQuestion.difficulty && (
-                <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
-                  {currentQuestion.difficulty}
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {battleFlowState === 'ANSWER_SUBMITTED' && (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400">
+                    Evaluating...
+                  </span>
+                )}
+                {battleFlowState === 'ADVANCING_QUESTION' && (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400">
+                    Next question...
+                  </span>
+                )}
+                {currentQuestion.difficulty && (
+                  <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                    {currentQuestion.difficulty}
+                  </span>
+                )}
+              </div>
             </div>
             <h2 className="text-[17px] sm:text-lg lg:text-xl font-semibold text-slate-900 dark:text-white leading-relaxed break-words">
               {currentQuestion.questionText}
