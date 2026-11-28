@@ -904,31 +904,62 @@ export class BattleEngine {
       return;
     }
 
+    const result = await this.evaluatePlayerAnswer(userId, data, socket);
+    if (!result.ok) {
+      socket.emit('battle_error', { message: result.error });
+    }
+  }
+
+  /**
+   * Authoritative, concurrency-safe answer evaluation shared by Socket.IO and REST fallback.
+   */
+  public static async evaluatePlayerAnswer(
+    userId: string,
+    data: { battleId: string; questionIndex: number; selectedOption: number; responseTimeMs?: number },
+    replySocket?: Socket
+  ): Promise<{ ok: true; evaluation: any } | { ok: false; status: number; error: string }> {
+    logger.info('ANSWER_ENDPOINT_REACHED', { userId, battleId: data?.battleId, questionIndex: data?.questionIndex });
+
+    if (!userId || !data?.battleId) {
+      return { ok: false, status: 400, error: 'Missing battleId or authenticated user.' };
+    }
+
     let shouldConclude = false;
+    let outcome: { ok: true; evaluation: any } | { ok: false; status: number; error: string } = {
+      ok: false,
+      status: 500,
+      error: 'Evaluation failed.'
+    };
 
     await this.withBattleLock(data.battleId, async () => {
       const battle = await this.getBattle(data.battleId);
       if (!battle) {
-        socket.emit('battle_error', { message: 'Battle session not found or expired.' });
+        logger.warn('SESSION_VALIDATION_FAILED', { userId, battleId: data.battleId, reason: 'not_found' });
+        outcome = { ok: false, status: 404, error: 'Battle session not found or expired.' };
         return;
       }
 
       if (battle.status !== 'ACTIVE' || battle.concluded) {
-        socket.emit('battle_error', { message: 'Battle is no longer active.' });
+        logger.warn('SESSION_VALIDATION_FAILED', { userId, battleId: data.battleId, reason: battle.status });
+        outcome = { ok: false, status: 409, error: 'Battle is no longer active.' };
         return;
       }
 
       const player = battle.players[userId];
       if (!player) {
-        socket.emit('battle_error', { message: 'Player not enrolled in this battle.' });
+        logger.warn('SESSION_VALIDATION_FAILED', { userId, battleId: data.battleId, reason: 'not_enrolled' });
+        outcome = { ok: false, status: 403, error: 'Player not enrolled in this battle.' };
         return;
       }
 
       const qIndex = data.questionIndex;
-      if (qIndex < 0 || qIndex >= battle.questions.length) {
-        socket.emit('battle_error', { message: 'Invalid question index.' });
+      if (typeof qIndex !== 'number' || qIndex < 0 || qIndex >= battle.questions.length) {
+        logger.warn('SESSION_VALIDATION_FAILED', { userId, battleId: data.battleId, reason: 'invalid_question_index', qIndex });
+        outcome = { ok: false, status: 400, error: 'Invalid question index.' };
         return;
       }
+
+      logger.info('SESSION_VALIDATION_OK', { userId, battleId: data.battleId, qIndex });
 
       const authoritativeQuestion = battle.questions[qIndex];
       const mapping = player.optionMappings?.[qIndex];
@@ -942,7 +973,7 @@ export class BattleEngine {
       if (player.submissions && player.submissions[qIndex]) {
         const prevSub = player.submissions[qIndex];
         logger.warn('Duplicate answer submission safely returned cached evaluation', { userId, battleId: data.battleId, qIndex });
-        socket.emit('answer_evaluated', {
+        const cachedPayload = {
           questionIndex: qIndex,
           selectedOption: prevSub.selectedOption,
           isCorrect: prevSub.isCorrect,
@@ -952,12 +983,13 @@ export class BattleEngine {
           correctOption: displayedCorrectOption !== -1 ? displayedCorrectOption : authoritativeQuestion.correctOption,
           nextQuestionIndex: player.progressIndex,
           totalQuestions: battle.totalQuestions
-        });
+        };
+        if (replySocket) replySocket.emit('answer_evaluated', cachedPayload);
+        outcome = { ok: true, evaluation: cachedPayload };
         return;
       }
 
       const isTimeout = data.selectedOption === -1;
-      // Map displayed option index back to original database option index
       const originalSelectedOption = isTimeout
         ? -1
         : (mapping && Array.isArray(mapping) && typeof mapping[data.selectedOption] === 'number'
@@ -1012,9 +1044,9 @@ export class BattleEngine {
       }
 
       await this.saveBattle(battle);
+      logger.info('DATABASE_WRITE_OK', { battleId: data.battleId, userId, score: player.score, progressIndex: player.progressIndex });
 
-      // Send authoritative response back to the answering player using their displayed option coordinates
-      socket.emit('answer_evaluated', {
+      const evaluationPayload = {
         questionIndex: qIndex,
         selectedOption: data.selectedOption,
         isCorrect,
@@ -1024,29 +1056,36 @@ export class BattleEngine {
         correctOption: displayedCorrectOption !== -1 ? displayedCorrectOption : authoritativeQuestion.correctOption,
         nextQuestionIndex: player.progressIndex,
         totalQuestions: battle.totalQuestions
-      });
+      };
 
-      // Broadcast synchronized progress ONLY to opponent (never overwrite sender's opponentProgress)
+      if (replySocket) {
+        replySocket.emit('answer_evaluated', evaluationPayload);
+      }
+
+      // Broadcast synchronized progress ONLY to opponent
       const stepPayload = {
         uid: userId,
         score: player.score,
         progressIndex: player.progressIndex,
         finished: player.finished
       };
-      if (typeof socket.to === 'function') {
-        socket.to(data.battleId).emit('step_update', stepPayload);
+      if (replySocket && typeof replySocket.to === 'function') {
+        replySocket.to(data.battleId).emit('step_update', stepPayload);
       } else if (this.io) {
         this.io.of('/battle').to(data.battleId).emit('step_update', stepPayload);
       }
 
-      // Check if all players have finished
       shouldConclude = Object.values(battle.players).every(p => p.finished);
+      outcome = { ok: true, evaluation: evaluationPayload };
+      logger.info('RESPONSE_RETURNED', { battleId: data.battleId, userId, qIndex, nextQuestionIndex: player.progressIndex });
     });
 
     if (shouldConclude) {
       logger.info('All players completed questions. Concluding match immediately.', { battleId: data.battleId });
       await this.concludeBattle(data.battleId, 'all_players_finished');
     }
+
+    return outcome;
   }
 
   /**

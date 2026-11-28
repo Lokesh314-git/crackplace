@@ -1681,6 +1681,27 @@ app.post('/api/auth/battle/abandon', strictAuthLimiter, verifyToken, async (req:
   }
 });
 
+// REST Fallback for Answer Evaluation (prevents infinite "Evaluating..." if WebSocket is unavailable)
+app.post('/api/auth/battle/submit-answer', verifyToken, async (req: AuthenticatedRequest, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
+  const { battleId, questionIndex, selectedOption, responseTimeMs } = req.body || {};
+  try {
+    const result = await BattleEngine.evaluatePlayerAnswer(req.user.uid, {
+      battleId,
+      questionIndex: Number(questionIndex),
+      selectedOption: Number(selectedOption),
+      responseTimeMs: typeof responseTimeMs === 'number' ? responseTimeMs : undefined
+    });
+    if (!result.ok) {
+      return res.status(result.status).json({ error: result.error });
+    }
+    res.json(result.evaluation);
+  } catch (error: any) {
+    logger.error('REST submit-answer failed', { userId: req.user.uid, battleId, error: error.message });
+    res.status(500).json({ error: error.message || 'Answer evaluation failed.' });
+  }
+});
+
 app.get('/api/auth/battle/history', verifyToken, async (req: AuthenticatedRequest, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
   try {

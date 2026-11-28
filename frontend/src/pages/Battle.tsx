@@ -4,7 +4,7 @@ import { useAuthStore } from '../store/authStore';
 import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { EntranceEffect, VictoryEffect } from '../components/battle/BattleEffects';
-import { 
+import {
   FaCircleCheck,
   FaCircleXmark,
   FaUserGroup,
@@ -209,7 +209,7 @@ const BattleInner: React.FC = () => {
       return () => clearInterval(interval);
     }
   }, [status, lobbyRoom, setSearchParams]);
-  
+
   // Custom battle settings form states
   const [selectedSubject, setSelectedSubject] = useState('quantitative_aptitude');
   const [selectedTopic, setSelectedTopic] = useState(() => getTopicsForSubject('quantitative_aptitude')[0] || '');
@@ -274,13 +274,15 @@ const BattleInner: React.FC = () => {
   >('INITIALIZING');
   const advanceTimerRef = useRef<number | null>(null);
   const submitRetryTimerRef = useRef<number | null>(null);
+  const lastEvaluatedIndexRef = useRef<number>(-1);
   const questionStartTimeRef = useRef<number>(Date.now());
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [battleAlert, setBattleAlert] = useState<{ text: string; type: 'info' | 'success' | 'error' } | null>(null);
   const [lobbyLoading, setLobbyLoading] = useState(false);
   const [lobbyLoadingMessage, setLobbyLoadingMessage] = useState('Preparing battle...');
   const [lobbyLoadingProgress, setLobbyLoadingProgress] = useState(0);
   const [lobbyLoadingSlow, setLobbyLoadingSlow] = useState(false);
-  
+
   // Emote state
   const [activeEmote, setActiveEmote] = useState<string | null>(null);
 
@@ -710,7 +712,7 @@ const BattleInner: React.FC = () => {
       ? `\nTopic: ${lobbyRoom.settings.topic}`
       : '';
     const text = `🔥 I challenge you to a 1v1 battle on CrackPlace AI!\n\nRoom Code: ${lobbyRoom.roomId}\nSubject: ${subjectName}${topicDetails}\nDifficulty: ${lobbyRoom.settings.difficulty}\nQuestions: ${lobbyRoom.settings.questionsCount}\n\nCan you beat me?\n\nJoin here:\n${inviteLink}`;
-    
+
     if (navigator.share) {
       navigator.share({
         title: 'CrackPlace AI Battle Challenge',
@@ -754,14 +756,14 @@ const BattleInner: React.FC = () => {
 
   // 2. Battle socket connection & message receivers
   useEffect(() => {
-    if (!battleId || (status !== 'battle' && status !== 'lobby') || !token) {
+    if (!battleId || (status !== 'battle' && status !== 'lobby' && status !== 'match_ready') || !token) {
       return;
     }
 
     // Create socket if not already existing
     if (!battleSocket.current) {
       battleSocket.current = io(`${getSocketUrl()}/battle`, {
-        transports: ['websocket'],
+        transports: ['websocket', 'polling'],
         auth: { token }
       });
     }
@@ -782,11 +784,17 @@ const BattleInner: React.FC = () => {
     };
 
     const onBattleError = (data: { message: string }) => {
+      if (submitRetryTimerRef.current) {
+        window.clearTimeout(submitRetryTimerRef.current);
+        submitRetryTimerRef.current = null;
+      }
       setIsSubmittingAnswer(false);
       isSubmittingRef.current = false;
       setSelectedOption(null);
       selectedOptionRef.current = null;
       setLobbyLoading(false);
+      setBattleFlowState('ERROR');
+      setSubmitError(data.message || 'Answer submission failed.');
       setBattleAlert({ text: data.message || 'Battle notification', type: 'error' });
     };
 
@@ -872,7 +880,7 @@ const BattleInner: React.FC = () => {
           .then(verified => {
             if (verified.profile) updateProfile(verified.profile);
           })
-          .catch(() => {});
+          .catch(() => { });
       }, 1500);
     };
 
@@ -980,10 +988,10 @@ const BattleInner: React.FC = () => {
       setAnswerFeedback(null);
       setIsSubmittingAnswer(false);
       isSubmittingRef.current = false;
-      
+
       let count = 3;
       setCountdown(count);
-      
+
       const interval = setInterval(() => {
         count -= 1;
         if (count <= 0) {
@@ -1012,56 +1020,7 @@ const BattleInner: React.FC = () => {
       nextQuestionIndex?: number;
       totalQuestions?: number;
     }) => {
-      if (submitRetryTimerRef.current) {
-        window.clearTimeout(submitRetryTimerRef.current);
-        submitRetryTimerRef.current = null;
-      }
-
-      setPlayerScore(data.score);
-      const nextProgress = typeof data.nextQuestionIndex === 'number'
-        ? data.nextQuestionIndex
-        : (data.questionIndex + 1);
-      setPlayerCompletedQuestions(nextProgress);
-
-      const chosenOption = selectedOptionRef.current ?? (typeof data.selectedOption === 'number' ? data.selectedOption : -1);
-
-      const feedback: AnswerFeedback = {
-        questionIndex: data.questionIndex,
-        selectedOption: chosenOption,
-        isCorrect: data.isCorrect,
-        correctOption: data.correctOption,
-        explanation: data.explanation,
-        pointsAwarded: data.pointsAwarded
-      };
-      setAnswerFeedback(feedback);
-      setBattleFlowState('ADVANCING_QUESTION');
-
-      const ptsStr = (typeof data.pointsAwarded === 'number' && data.pointsAwarded > 0) ? `+${data.pointsAwarded}` : (data.isCorrect ? '+20' : '+0');
-      setBattleAlert({
-        text: data.isCorrect ? `⚡ Correct! ${ptsStr}` : '❌ Wrong!',
-        type: data.isCorrect ? 'success' : 'error'
-      });
-
-      if (advanceTimerRef.current) {
-        window.clearTimeout(advanceTimerRef.current);
-      }
-      advanceTimerRef.current = window.setTimeout(() => {
-        advanceTimerRef.current = null;
-        const nextIdx = typeof data.nextQuestionIndex === 'number'
-          ? data.nextQuestionIndex
-          : (currentIndexRef.current + 1);
-
-        setCurrentIndex(nextIdx);
-        currentIndexRef.current = nextIdx;
-        setSelectedOption(null);
-        selectedOptionRef.current = null;
-        setAnswerFeedback(null);
-        setIsSubmittingAnswer(false);
-        isSubmittingRef.current = false;
-        setBattleAlert(null);
-        const totalQ = data.totalQuestions || questionsRef.current.length || 5;
-        setBattleFlowState(nextIdx >= totalQ ? 'WAITING_FOR_OPPONENT' : 'QUESTION_ACTIVE');
-      }, 1200);
+      applyEvaluationResult(data);
     };
 
     const onStepUpdate = (data: { uid: string; score: number; progressIndex: number; finished: boolean }) => {
@@ -1137,7 +1096,7 @@ const BattleInner: React.FC = () => {
         battleSocket.current = null;
       }
     };
-  }, [battleId, token, userProfile?.uid, updateProfile, setSearchParams]);
+  }, [battleId, status, token, userProfile?.uid, updateProfile, setSearchParams]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -1242,13 +1201,137 @@ const BattleInner: React.FC = () => {
     };
   }, [status, currentIndex, questions.length, battleId]);
 
-  // 3. Question submit handler (Server-Authoritative with retry safety)
+  // Shared evaluation result handler (used by both Socket.IO and REST fallback)
+  const applyEvaluationResult = (data: {
+    questionIndex: number;
+    selectedOption?: number;
+    isCorrect: boolean;
+    score: number;
+    pointsAwarded?: number;
+    explanation?: string;
+    correctOption: number;
+    nextQuestionIndex?: number;
+    totalQuestions?: number;
+  }) => {
+    if (lastEvaluatedIndexRef.current === data.questionIndex && currentIndexRef.current > data.questionIndex) {
+      return;
+    }
+    lastEvaluatedIndexRef.current = data.questionIndex;
+
+    if (submitRetryTimerRef.current) {
+      window.clearTimeout(submitRetryTimerRef.current);
+      submitRetryTimerRef.current = null;
+    }
+
+    console.info('[Battle] Evaluation completed', {
+      questionIndex: data.questionIndex,
+      isCorrect: data.isCorrect,
+      score: data.score,
+      nextQuestionIndex: data.nextQuestionIndex
+    });
+
+    setSubmitError(null);
+    setPlayerScore(data.score);
+    const nextProgress = typeof data.nextQuestionIndex === 'number'
+      ? data.nextQuestionIndex
+      : (data.questionIndex + 1);
+    setPlayerCompletedQuestions(nextProgress);
+
+    const chosenOption = selectedOptionRef.current ?? (typeof data.selectedOption === 'number' ? data.selectedOption : -1);
+
+    const feedback: AnswerFeedback = {
+      questionIndex: data.questionIndex,
+      selectedOption: chosenOption,
+      isCorrect: data.isCorrect,
+      correctOption: data.correctOption,
+      explanation: data.explanation,
+      pointsAwarded: data.pointsAwarded
+    };
+    setAnswerFeedback(feedback);
+    setBattleFlowState('ADVANCING_QUESTION');
+
+    const ptsStr = (typeof data.pointsAwarded === 'number' && data.pointsAwarded > 0) ? `+${data.pointsAwarded}` : (data.isCorrect ? '+20' : '+0');
+    setBattleAlert({
+      text: data.isCorrect ? `⚡ Correct! ${ptsStr}` : '❌ Wrong!',
+      type: data.isCorrect ? 'success' : 'error'
+    });
+
+    if (advanceTimerRef.current) {
+      window.clearTimeout(advanceTimerRef.current);
+    }
+    advanceTimerRef.current = window.setTimeout(() => {
+      advanceTimerRef.current = null;
+      const nextIdx = typeof data.nextQuestionIndex === 'number'
+        ? data.nextQuestionIndex
+        : (currentIndexRef.current + 1);
+
+      console.info('[Battle] Next question requested', { nextIdx });
+      setCurrentIndex(nextIdx);
+      currentIndexRef.current = nextIdx;
+      setSelectedOption(null);
+      selectedOptionRef.current = null;
+      setAnswerFeedback(null);
+      setIsSubmittingAnswer(false);
+      isSubmittingRef.current = false;
+      setBattleAlert(null);
+      const totalQ = data.totalQuestions || questionsRef.current.length || 5;
+      setBattleFlowState(nextIdx >= totalQ ? 'WAITING_FOR_OPPONENT' : 'QUESTION_ACTIVE');
+    }, 1200);
+  };
+
+  // REST Fallback for answer evaluation with timeout & guaranteed cleanup
+  const submitAnswerViaRest = async (targetBattleId: string, qIdx: number, optionIdx: number, responseTimeMs: number) => {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 10000);
+    try {
+      const res = await fetch('/api/auth/battle/submit-answer', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          battleId: targetBattleId,
+          questionIndex: qIdx,
+          selectedOption: optionIdx,
+          responseTimeMs
+        }),
+        signal: controller.signal
+      });
+      console.info('[Battle] API response status', { status: res.status, qIdx });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error || `Server returned ${res.status}`);
+      }
+      applyEvaluationResult(data);
+    } catch (err: any) {
+      const msg = err?.name === 'AbortError'
+        ? 'Answer evaluation timed out. Please retry.'
+        : (err?.message || 'Failed to evaluate answer. Please retry.');
+      console.error('[Battle] Evaluation failed', { qIdx, error: msg });
+      setIsSubmittingAnswer(false);
+      isSubmittingRef.current = false;
+      setSelectedOption(null);
+      selectedOptionRef.current = null;
+      setBattleFlowState('ERROR');
+      setSubmitError(msg);
+      setBattleAlert({ text: msg, type: 'error' });
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  };
+
+  // 3. Question submit handler (Server-Authoritative with REST fallback & timeout protection)
   const handleAnswerSubmit = (optionIdx: number) => {
     if (selectedOptionRef.current !== null || isSubmittingRef.current || !battleId) return;
 
     const qIdx = currentIndexRef.current;
     const responseTimeMs = Math.max(100, Date.now() - questionStartTimeRef.current);
 
+    console.info('[Battle] Answer button clicked', { battleId, questionIndex: qIdx, selectedOption: optionIdx });
+    console.info('[Battle] Submission started', { battleId, questionIndex: qIdx, responseTimeMs });
+
+    setSubmitError(null);
     setIsSubmittingAnswer(true);
     isSubmittingRef.current = true;
     setSelectedOption(optionIdx);
@@ -1259,31 +1342,29 @@ const BattleInner: React.FC = () => {
       setBattleAlert({ text: '⏳ Time Out!', type: 'error' });
     }
 
-    const emitSubmission = () => {
-      if (battleSocket.current && battleSocket.current.connected) {
-        battleSocket.current.emit('submit_answer', {
-          battleId,
-          questionIndex: qIdx,
-          selectedOption: optionIdx,
-          responseTimeMs
-        });
-      } else if (battleSocket.current) {
-        battleSocket.current.connect();
-      }
-    };
-
-    emitSubmission();
-
-    // Safety retry if answer_evaluated is delayed or packet was dropped during reconnect
     if (submitRetryTimerRef.current) {
       window.clearTimeout(submitRetryTimerRef.current);
+      submitRetryTimerRef.current = null;
     }
-    submitRetryTimerRef.current = window.setTimeout(() => {
-      if (isSubmittingRef.current && currentIndexRef.current === qIdx && statusRef.current === 'battle') {
-        emitSubmission();
-        battleSocket.current?.emit('get_battle_state', { battleId });
-      }
-    }, 3000);
+
+    if (battleSocket.current && battleSocket.current.connected) {
+      battleSocket.current.emit('submit_answer', {
+        battleId,
+        questionIndex: qIdx,
+        selectedOption: optionIdx,
+        responseTimeMs
+      });
+
+      // If WebSocket response doesn't arrive within 2.5s, fall back to REST evaluation
+      submitRetryTimerRef.current = window.setTimeout(() => {
+        if (isSubmittingRef.current && currentIndexRef.current === qIdx && statusRef.current === 'battle') {
+          void submitAnswerViaRest(battleId, qIdx, optionIdx, responseTimeMs);
+        }
+      }, 2500);
+    } else {
+      // Socket not connected yet -> submit directly via REST so "Evaluating..." never hangs
+      void submitAnswerViaRest(battleId, qIdx, optionIdx, responseTimeMs);
+    }
   };
 
 
@@ -1307,21 +1388,19 @@ const BattleInner: React.FC = () => {
           <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
             <button
               onClick={() => setLoungeTab('quick')}
-              className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                loungeTab === 'quick' 
-                  ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs' 
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
+              className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${loungeTab === 'quick'
+                ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
             >
               Quick Match
             </button>
             <button
               onClick={() => setLoungeTab('friend')}
-              className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                loungeTab === 'friend' 
-                  ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs' 
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
+              className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${loungeTab === 'friend'
+                ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
             >
               Custom Challenge
             </button>
@@ -1464,22 +1543,20 @@ const BattleInner: React.FC = () => {
                   <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0">
                     <button
                       onClick={() => { setCustomSubTab('create'); setJoinError(null); }}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
-                        customSubTab === 'create'
-                          ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
-                          : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                      }`}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${customSubTab === 'create'
+                        ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                        }`}
                     >
                       <FaPlus className="w-3 h-3" />
                       <span>Create Room</span>
                     </button>
                     <button
                       onClick={() => { setCustomSubTab('join'); setJoinError(null); }}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
-                        customSubTab === 'join'
-                          ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
-                          : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                      }`}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${customSubTab === 'join'
+                        ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                        }`}
                     >
                       <FaRightToBracket className="w-3 h-3" />
                       <span>Join Code</span>
@@ -1645,7 +1722,7 @@ const BattleInner: React.FC = () => {
   if (status === 'lobby' && lobbyRoom) {
     const playersMap = lobbyRoom.players || {};
     const host = playersMap[lobbyRoom.hostUid];
-    
+
     const guestUid = Object.keys(playersMap).find(uid => uid !== lobbyRoom.hostUid);
     const guest = guestUid ? playersMap[guestUid] : null;
 
@@ -1668,7 +1745,7 @@ const BattleInner: React.FC = () => {
         {/* Navigation & Status Header */}
         <div className="flex justify-between items-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-xl shadow-xs">
           <div className="flex items-center gap-2 sm:gap-3">
-            <button 
+            <button
               onClick={handleLeaveLobby}
               className="p-1.5 sm:p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer"
             >
@@ -1691,7 +1768,7 @@ const BattleInner: React.FC = () => {
               </div>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300">
               <FaRegClock className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
@@ -1713,8 +1790,8 @@ const BattleInner: React.FC = () => {
               </div>
 
               <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
-                <div 
-                  className="h-full bg-blue-600 transition-all duration-300 rounded-full" 
+                <div
+                  className="h-full bg-blue-600 transition-all duration-300 rounded-full"
                   style={{ width: `${lobbyLoadingProgress}%` }}
                 ></div>
               </div>
@@ -1751,9 +1828,9 @@ const BattleInner: React.FC = () => {
                 <img src={getUserAvatarUrl(host)} alt={host?.displayName || 'Host'} className="w-full h-full object-cover rounded-full" />
                 {lobbyRoom.hostUid === userProfile?.uid && activeEmote && (
                   <div className="absolute -top-6 -right-2 text-3xl animate-bounce z-10 drop-shadow-md">
-                    {activeEmote === 'emote_gg' || activeEmote === 'gg' ? '🎮' : 
-                     activeEmote === 'emote_rip' || activeEmote === 'rip' ? '💀' : 
-                     activeEmote === 'emote_sweat' || activeEmote === 'sweat' ? '😅' : '🔥'}
+                    {activeEmote === 'emote_gg' || activeEmote === 'gg' ? '🎮' :
+                      activeEmote === 'emote_rip' || activeEmote === 'rip' ? '💀' :
+                        activeEmote === 'emote_sweat' || activeEmote === 'sweat' ? '😅' : '🔥'}
                   </div>
                 )}
               </div>
@@ -1778,7 +1855,7 @@ const BattleInner: React.FC = () => {
               <span className="font-bold text-2xl text-slate-400">VS</span>
               <div className="mt-2 text-center">
                 <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Invite Code</span>
-                <button 
+                <button
                   type="button"
                   onClick={handleLocalCopy}
                   className="inline-flex items-center gap-1.5 text-xs font-mono font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 mt-0.5 px-2 py-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
@@ -1806,9 +1883,9 @@ const BattleInner: React.FC = () => {
                     <img src={getUserAvatarUrl(guest)} alt={guest.displayName || 'Guest'} className="w-full h-full object-cover rounded-full" />
                     {lobbyRoom.guestUid === userProfile?.uid && activeEmote && (
                       <div className="absolute -top-6 -right-2 text-3xl animate-bounce z-10 drop-shadow-md">
-                        {activeEmote === 'emote_gg' || activeEmote === 'gg' ? '🎮' : 
-                         activeEmote === 'emote_rip' || activeEmote === 'rip' ? '💀' : 
-                         activeEmote === 'emote_sweat' || activeEmote === 'sweat' ? '😅' : '🔥'}
+                        {activeEmote === 'emote_gg' || activeEmote === 'gg' ? '🎮' :
+                          activeEmote === 'emote_rip' || activeEmote === 'rip' ? '💀' :
+                            activeEmote === 'emote_sweat' || activeEmote === 'sweat' ? '😅' : '🔥'}
                       </div>
                     )}
                   </div>
@@ -1816,11 +1893,10 @@ const BattleInner: React.FC = () => {
                     <h3 className="font-semibold text-xs text-slate-900 dark:text-white truncate">{guest.displayName}</h3>
                     <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Rating: {guest.battleRating}</p>
                     <div className="flex items-center justify-center gap-1.5 mt-1.5">
-                      <span className={`inline-block text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                        isOpponentReady 
-                          ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800' 
-                          : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
-                      }`}>
+                      <span className={`inline-block text-[10px] px-2 py-0.5 rounded-full font-medium ${isOpponentReady
+                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                        : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
+                        }`}>
                         {isOpponentReady ? 'Ready' : 'Not Ready'}
                       </span>
                       {lobbyRoom.guestUid === userProfile?.uid && userProfile?.equippedEmote && (
@@ -1964,11 +2040,10 @@ const BattleInner: React.FC = () => {
             <button
               onClick={handleToggleReady}
               disabled={lobbyLoading}
-              className={`flex-1 py-3 rounded-xl text-xs font-semibold transition-colors cursor-pointer flex items-center justify-center gap-2 px-2 ${
-                isMeReady
-                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/50'
-                  : 'bg-blue-600 text-white hover:bg-blue-700'
-              }`}
+              className={`flex-1 py-3 rounded-xl text-xs font-semibold transition-colors cursor-pointer flex items-center justify-center gap-2 px-2 ${isMeReady
+                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/50'
+                : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
             >
               <span className="truncate">{isMeReady ? 'Cancel Ready' : 'Confirm Ready'}</span>
               <FaPlay className="w-3 h-3 shrink-0" />
@@ -2097,9 +2172,9 @@ const BattleInner: React.FC = () => {
 
     return (
       <div className="max-w-xl mx-auto text-center space-y-6 animate-fade-in py-8 relative">
-        <VictoryEffect 
-          type={isMeWinner ? (userProfile?.equippedVictory || null) : (isDraw ? null : (opponent?.equippedVictory || null))} 
-          winnerName={isMeWinner ? (userProfile?.displayName || 'You') : (opponent?.displayName || 'Opponent')} 
+        <VictoryEffect
+          type={isMeWinner ? (userProfile?.equippedVictory || null) : (isDraw ? null : (opponent?.equippedVictory || null))}
+          winnerName={isMeWinner ? (userProfile?.displayName || 'You') : (opponent?.displayName || 'Opponent')}
         />
         <div className="space-y-2 relative z-10">
           <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold border ${outcomeBadge}`}>
@@ -2143,13 +2218,12 @@ const BattleInner: React.FC = () => {
         <div className="grid grid-cols-3 sm:grid-cols-3 gap-2 sm:gap-3">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3 sm:p-4 rounded-xl text-center shadow-xs">
             <span className="text-[9px] sm:text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase">Rating Change</span>
-            <p className={`font-bold text-base sm:text-lg mt-1 ${
-              !isDraw && typeof eloVal === 'number' && eloVal > 0 
-                ? 'text-emerald-600 dark:text-emerald-400' 
-                : !isDraw && typeof eloVal === 'number' && eloVal < 0 
-                  ? 'text-rose-600 dark:text-rose-400' 
-                  : 'text-slate-600 dark:text-slate-300'
-            }`}>
+            <p className={`font-bold text-base sm:text-lg mt-1 ${!isDraw && typeof eloVal === 'number' && eloVal > 0
+              ? 'text-emerald-600 dark:text-emerald-400'
+              : !isDraw && typeof eloVal === 'number' && eloVal < 0
+                ? 'text-rose-600 dark:text-rose-400'
+                : 'text-slate-600 dark:text-slate-300'
+              }`}>
               {eloChange} Elo
             </p>
           </div>
@@ -2257,13 +2331,12 @@ const BattleInner: React.FC = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -10 }}
             transition={{ duration: 0.16 }}
-            className={`fixed top-16 sm:top-20 left-1/2 -translate-x-1/2 z-50 px-3.5 py-2 rounded-xl text-xs font-semibold shadow-md border max-w-[90vw] truncate ${
-              battleAlert.type === 'success' 
-                ? 'bg-emerald-600 text-white border-emerald-500' 
-                : battleAlert.type === 'error'
-                  ? 'bg-rose-600 text-white border-rose-500'
-                  : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white border-slate-200 dark:border-slate-700'
-            }`}
+            className={`fixed top-16 sm:top-20 left-1/2 -translate-x-1/2 z-50 px-3.5 py-2 rounded-xl text-xs font-semibold shadow-md border max-w-[90vw] truncate ${battleAlert.type === 'success'
+              ? 'bg-emerald-600 text-white border-emerald-500'
+              : battleAlert.type === 'error'
+                ? 'bg-rose-600 text-white border-rose-500'
+                : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white border-slate-200 dark:border-slate-700'
+              }`}
           >
             {battleAlert.text}
           </motion.div>
@@ -2271,9 +2344,9 @@ const BattleInner: React.FC = () => {
       </AnimatePresence>
 
       {showEntrance && (
-        <EntranceEffect 
-          type={opponent?.equippedEntrance || userProfile?.equippedEntrance || null} 
-          onComplete={() => setShowEntrance(false)} 
+        <EntranceEffect
+          type={opponent?.equippedEntrance || userProfile?.equippedEntrance || null}
+          onComplete={() => setShowEntrance(false)}
         />
       )}
 
@@ -2292,13 +2365,12 @@ const BattleInner: React.FC = () => {
         </div>
 
         <div
-          className={`shrink-0 font-mono text-[11px] sm:text-xs font-bold px-2.5 py-1.5 sm:px-3 rounded-lg border flex items-center gap-1.5 transition-colors whitespace-nowrap ${
-            questionTimeLeft <= 5
-              ? 'text-rose-600 dark:text-rose-400 border-rose-300 dark:border-rose-700 bg-rose-50 dark:bg-rose-950/50 animate-pulse'
-              : questionTimeLeft <= 10
-                ? 'text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40'
-                : 'text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40'
-          }`}
+          className={`shrink-0 font-mono text-[11px] sm:text-xs font-bold px-2.5 py-1.5 sm:px-3 rounded-lg border flex items-center gap-1.5 transition-colors whitespace-nowrap ${questionTimeLeft <= 5
+            ? 'text-rose-600 dark:text-rose-400 border-rose-300 dark:border-rose-700 bg-rose-50 dark:bg-rose-950/50 animate-pulse'
+            : questionTimeLeft <= 10
+              ? 'text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40'
+              : 'text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40'
+            }`}
         >
           <FaRegClock className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
           <span>{formatTimer(questionTimeLeft)}</span>
@@ -2367,6 +2439,19 @@ const BattleInner: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {submitError && (
+        <div className="flex items-center justify-between gap-2 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/70 text-rose-700 dark:text-rose-300 text-xs font-medium">
+          <span>{submitError}</span>
+          <button
+            type="button"
+            onClick={() => setSubmitError(null)}
+            className="shrink-0 font-bold underline cursor-pointer"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Question Card & Answer Options */}
       <AnimatePresence mode="wait">

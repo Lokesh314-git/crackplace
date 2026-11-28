@@ -131,4 +131,29 @@ describe('Battle Question Progression & Simultaneous Submission Suite', () => {
     expect(await redisClient.get(`battle:active:${p1}`)).toBeNull();
     expect(await redisClient.get(`battle:active:${p2}`)).toBeNull();
   });
+
+  it('4. evaluates answers via evaluatePlayerAnswer (REST fallback) and returns exact evaluation payload', async () => {
+    const res1 = await BattleEngine.evaluatePlayerAnswer(p1, {
+      battleId,
+      questionIndex: 0,
+      selectedOption: 0,
+      responseTimeMs: 1800
+    });
+    expect(res1.ok).toBe(true);
+    if (res1.ok) {
+      expect(res1.evaluation.questionIndex).toBe(0);
+      expect(res1.evaluation.isCorrect).toBe(true);
+      expect(res1.evaluation.nextQuestionIndex).toBe(1);
+      expect(res1.evaluation.totalQuestions).toBe(5);
+      expect(res1.evaluation.score).toBeGreaterThan(0);
+    }
+
+    // Invalid question index returns meaningful error
+    const badRes = await BattleEngine.evaluatePlayerAnswer(p1, {
+      battleId,
+      questionIndex: 99,
+      selectedOption: 0
+    });
+    expect(badRes.ok).toBe(false);
+  });
 });
