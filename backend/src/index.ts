@@ -142,6 +142,90 @@ app.get('/ready', async (req, res) => {
 // ----------------------------------------------------
 // Core Auth & Profile Verification
 // ----------------------------------------------------
+app.post('/api/auth/register-profile', strictAuthLimiter, verifyToken, async (req: AuthenticatedRequest, res) => {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
+  }
+
+  const uid = req.user.uid;
+  const userDocRef = db.collection('users').doc(uid);
+  const { displayName, email, college, department, year, dreamCompany, referredBy } = req.body || {};
+
+  try {
+    let finalProfile: any = null;
+    await db.runTransaction(async (transaction: any) => {
+      const userDoc = await transaction.get(userDocRef);
+      const defaultResolved = resolveUserAvatar({ uid });
+      const targetProgressionVersion = GAME_CONFIG.levels?.progressionVersion ?? 2;
+
+      if (!userDoc.exists) {
+        const cleanYear = Math.min(5, Math.max(1, Number(year) || 1));
+        finalProfile = {
+          uid,
+          email: (typeof email === 'string' && email.trim()) ? email.trim() : (req.user!.email || ''),
+          displayName: (typeof displayName === 'string' && displayName.trim()) ? displayName.trim() : (req.user!.name || 'Candidate'),
+          photoURL: defaultResolved.url,
+          equippedAvatar: defaultResolved.id,
+          unlockedAvatars: [defaultResolved.id],
+          role: 'student',
+          college: typeof college === 'string' ? college.trim() : '',
+          department: typeof department === 'string' ? department.trim() : '',
+          year: cleanYear,
+          dreamCompany: typeof dreamCompany === 'string' ? dreamCompany.trim() : '',
+          skills: [],
+          bio: '',
+          xp: 0,
+          totalXp: 0,
+          coins: 100,
+          level: 1,
+          xpProgressionVersion: targetProgressionVersion,
+          leaderboardEligible: false,
+          battleRating: GAME_CONFIG.elo?.startingRating ?? 1000,
+          dailyStreak: 0,
+          longestStreak: 0,
+          lastActiveDate: new Date().toISOString(),
+          placementReadinessScore: 0,
+          stats: {
+            totalQuestionsSolved: 0,
+            totalBattlesWon: 0,
+            totalMockTests: 0
+          },
+          unlockedAchievements: [],
+          referredBy: typeof referredBy === 'string' && referredBy.trim() ? referredBy.trim() : null,
+          createdAt: new Date().toISOString()
+        };
+        transaction.set(userDocRef, finalProfile);
+      } else {
+        // Safely merge missing academic/display fields if /api/auth/verify raced ahead,
+        // without overwriting existing XP, coins, Elo, level, or existing academic credentials.
+        const existing = userDoc.data() || {};
+        const updates: Record<string, any> = {};
+        if (!existing.college && typeof college === 'string' && college.trim()) updates.college = college.trim();
+        if (!existing.department && typeof department === 'string' && department.trim()) updates.department = department.trim();
+        if (!existing.dreamCompany && typeof dreamCompany === 'string' && dreamCompany.trim()) updates.dreamCompany = dreamCompany.trim();
+        if (!existing.year && year) updates.year = Math.min(5, Math.max(1, Number(year) || 1));
+        if ((!existing.displayName || existing.displayName === 'Anonymous') && typeof displayName === 'string' && displayName.trim()) {
+          updates.displayName = displayName.trim();
+        }
+        if (!existing.equippedAvatar) {
+          updates.equippedAvatar = defaultResolved.id;
+          updates.photoURL = defaultResolved.url;
+          updates.unlockedAvatars = [defaultResolved.id];
+        }
+        if (Object.keys(updates).length > 0) {
+          transaction.update(userDocRef, updates);
+        }
+        finalProfile = { ...existing, ...updates };
+      }
+    });
+
+    res.json({ profile: finalProfile });
+  } catch (error: any) {
+    logger.error('Failed to initialize registration profile', { uid, error: error.message });
+    res.status(500).json({ error: error.message || 'Profile initialization failed.', code: 'PROFILE_INIT_FAILED' });
+  }
+});
+
 app.post('/api/auth/verify', strictAuthLimiter, verifyToken, async (req: AuthenticatedRequest, res) => {
   if (!req.user) {
     return res.status(401).json({ error: 'Unauthorized' });
@@ -206,11 +290,21 @@ app.post('/api/auth/verify', strictAuthLimiter, verifyToken, async (req: Authent
       const lastActiveDate = userData.lastActiveDate || '';
       const lastLoginRewardClaimedDate = userData.lastLoginRewardClaimedDate || '';
       let loginStreakCount = userData.loginStreakCount || 0;
-      let xp = userData.xp || 0;
-      let coins = userData.coins || 0;
-      oldLevel = userData.level || 1;
+      let xp = Number(userData.xp ?? userData.totalXp ?? 0);
+      let coins = Number(userData.coins || 0);
+      oldLevel = LevelCalculator.calculateLevelFromXP(xp);
       
       let updatedFields: any = {};
+
+      // Idempotent XP progression migration: recalculate level from lifetime XP without modifying XP/coins/Elo
+      const targetProgressionVersion = GAME_CONFIG.levels?.progressionVersion ?? 2;
+      if (userData.xpProgressionVersion !== targetProgressionVersion || userData.level !== oldLevel) {
+        updatedFields.level = oldLevel;
+        updatedFields.xp = xp;
+        updatedFields.totalXp = xp;
+        updatedFields.xpProgressionVersion = targetProgressionVersion;
+        newLevel = oldLevel;
+      }
 
       // Ensure backwards compatibility and auto-recovery for existing users missing avatar data
       if (!userData.unlockedAvatars || !Array.isArray(userData.unlockedAvatars) || userData.unlockedAvatars.length === 0) {

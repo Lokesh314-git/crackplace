@@ -31,6 +31,7 @@ type RegisterFormData = z.infer<typeof registerSchema>;
 export const Register: React.FC = () => {
   const { register: registerUser } = useAuthStore();
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [profileRetryData, setProfileRetryData] = useState<RegisterFormData | null>(null);
   const [loadingLocal, setLoadingLocal] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
@@ -49,6 +50,7 @@ export const Register: React.FC = () => {
   const onSubmit = async (data: RegisterFormData) => {
     setLoadingLocal(true);
     setErrorMsg(null);
+    setProfileRetryData(null);
     try {
       const urlParams = new URLSearchParams(window.location.search);
       const referrerId = urlParams.get('ref');
@@ -59,7 +61,7 @@ export const Register: React.FC = () => {
         year: Number(data.year),
         dreamCompany: data.dreamCompany,
         referredBy: referrerId || undefined
-      });
+      } as any);
 
       if (referrerId) {
         const { token } = useAuthStore.getState();
@@ -84,11 +86,14 @@ export const Register: React.FC = () => {
         sessionStorage.removeItem('pending_invite');
         navigate(`/invite/${pendingInvite}`);
       } else {
-        navigate('/');
+        navigate('/dashboard');
       }
     } catch (err: any) {
       console.error(err);
-      setErrorMsg(err.message || 'Registration failed. Email might already be in use.');
+      if (err?.code === 'PROFILE_INIT_FAILED') {
+        setProfileRetryData(data);
+      }
+      setErrorMsg(err.message || 'Registration failed. Please check your details and try again.');
     } finally {
       setLoadingLocal(false);
     }
@@ -123,9 +128,21 @@ export const Register: React.FC = () => {
 
           {/* Error Alert */}
           {errorMsg && (
-            <div className="mb-6 flex items-start gap-2.5 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
-              <FaCircleExclamation className="w-4 h-4 shrink-0 text-rose-500 mt-0.5" />
-              <span>{errorMsg}</span>
+            <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+              <div className="flex items-start gap-2.5">
+                <FaCircleExclamation className="w-4 h-4 shrink-0 text-rose-500 mt-0.5" />
+                <span>{errorMsg}</span>
+              </div>
+              {profileRetryData && (
+                <button
+                  type="button"
+                  disabled={loadingLocal}
+                  onClick={() => onSubmit(profileRetryData)}
+                  className="shrink-0 px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold cursor-pointer disabled:opacity-50"
+                >
+                  {loadingLocal ? 'Retrying...' : 'Retry Profile Setup'}
+                </button>
+              )}
             </div>
           )}
 

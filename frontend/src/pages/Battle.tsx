@@ -59,8 +59,98 @@ interface Opponent {
 }
 
 
-export const Battle: React.FC = () => {
+function isValidQuizSet(quiz: any): quiz is QuizQuestion[] {
+  return (
+    Array.isArray(quiz) &&
+    quiz.length > 0 &&
+    quiz.every(
+      (q) =>
+        q &&
+        typeof q.questionText === 'string' &&
+        q.questionText.trim().length > 0 &&
+        Array.isArray(q.options) &&
+        q.options.length >= 2 &&
+        q.options.every((opt: any) => typeof opt === 'string')
+    )
+  );
+}
+
+interface BattleErrorBoundaryState {
+  hasError: boolean;
+  errorMessage: string;
+}
+
+class BattleErrorBoundary extends React.Component<
+  { children: React.ReactNode; onReset?: () => void },
+  BattleErrorBoundaryState
+> {
+  constructor(props: { children: React.ReactNode; onReset?: () => void }) {
+    super(props);
+    this.state = { hasError: false, errorMessage: '' };
+  }
+
+  static getDerivedStateFromError(error: Error): BattleErrorBoundaryState {
+    return {
+      hasError: true,
+      errorMessage: error?.message || 'Unexpected battle initialization error.'
+    };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[BattleErrorBoundary] Caught runtime error in Battle Arena:', error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="max-w-lg mx-auto my-12 p-6 sm:p-8 rounded-2xl bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-800/70 shadow-sm text-center space-y-4">
+          <div className="mx-auto w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 flex items-center justify-center text-rose-600 dark:text-rose-400">
+            <FaCircleXmark className="w-6 h-6" />
+          </div>
+          <div className="space-y-1.5">
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+              Unable to initialize battle
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+              Something went wrong while preparing the battle interface. Your session state is safe.
+            </p>
+            {import.meta.env.DEV && this.state.errorMessage && (
+              <p className="text-[11px] font-mono text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 p-2 rounded-lg break-words">
+                {this.state.errorMessage}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2.5 justify-center pt-2">
+            <button
+              type="button"
+              onClick={() => this.setState({ hasError: false, errorMessage: '' })}
+              className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold cursor-pointer transition-colors"
+            >
+              Retry Initialization
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                this.setState({ hasError: false, errorMessage: '' });
+                this.props.onReset?.();
+                window.location.href = '/battle';
+              }}
+              className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold cursor-pointer transition-colors"
+            >
+              Return to Battle Arena
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+const BattleInner: React.FC = () => {
   const { token, userProfile, updateProfile } = useAuthStore();
+  const prefersReducedMotion = useReducedMotion();
 
   // Setup Lounge states
   const [loungeTab, setLoungeTab] = useState<'quick' | 'friend'>('quick');
@@ -91,6 +181,7 @@ export const Battle: React.FC = () => {
   const [lobbyRoom, setLobbyRoom] = useState<any | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [lobbyTimeLeft, setLobbyTimeLeft] = useState('30:00');
+  const [copiedInvite, setCopiedInvite] = useState(false);
 
   // Room Join State
   const [joinRoomCode, setJoinRoomCode] = useState('');
@@ -377,12 +468,24 @@ export const Battle: React.FC = () => {
         return;
       }
 
+      if (!data?.battleId || !isValidQuizSet(data?.quiz)) {
+        isSearchingRef.current = false;
+        socket.removeAllListeners();
+        socket.disconnect();
+        if (matchmakingSocket.current === socket) matchmakingSocket.current = null;
+        setMatchError('Unable to initialize battle: received incomplete question data. Please try again.');
+        setMatchmakingState('error');
+        setStatus('lounge');
+        setSearchElapsedSeconds(0);
+        return;
+      }
+
       isSearchingRef.current = false;
       setMatchmakingState('matched');
       setActiveSession(null);
       setMatchError(null);
       setBattleId(data.battleId);
-      setOpponent(data.opponent);
+      setOpponent(data.opponent || null);
       setQuestions(data.quiz);
       setPlayerScore(0);
       setPlayerCompletedQuestions(0);
@@ -1488,11 +1591,12 @@ export const Battle: React.FC = () => {
 
     const handleLocalCopy = () => {
       navigator.clipboard.writeText(inviteLink);
-      alert('Battle invite link copied to clipboard!');
+      setCopiedInvite(true);
+      setTimeout(() => setCopiedInvite(false), 2000);
     };
 
     return (
-      <div className="max-w-2xl mx-auto space-y-6 animate-fade-in pb-16 text-slate-900 dark:text-white">
+      <div className="w-full max-w-2xl mx-auto space-y-4 sm:space-y-5 animate-fade-in pb-12 text-slate-900 dark:text-white overflow-x-hidden">
         {/* Navigation & Status Header */}
         <div className="flex justify-between items-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-xl shadow-xs">
           <div className="flex items-center gap-2 sm:gap-3">
@@ -1567,14 +1671,15 @@ export const Battle: React.FC = () => {
         )}
 
         {/* Players Card */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-xl space-y-6 shadow-xs">
-          <div className="grid grid-cols-3 items-center gap-4">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 sm:p-6 rounded-xl space-y-4 sm:space-y-5 shadow-xs">
+          {/* Mobile & Desktop Responsive Participants Grid */}
+          <div className="relative grid grid-cols-2 sm:grid-cols-3 items-stretch sm:items-center gap-2.5 sm:gap-4">
             {/* Host Card */}
-            <div className="flex flex-col items-center text-center space-y-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700">
-              <span className="text-[10px] font-bold tracking-wider text-blue-600 dark:text-blue-400 uppercase">
+            <div className="min-w-0 flex flex-col items-center justify-between text-center space-y-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700">
+              <span className="text-[10px] font-bold tracking-wider text-blue-600 dark:text-blue-400 uppercase truncate max-w-full">
                 {lobbyRoom.hostUid === userProfile?.uid ? 'You (Host)' : 'Host'}
               </span>
-              <div className="relative w-14 h-14 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-base font-bold text-slate-800 dark:text-white">
+              <div className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-base font-bold text-slate-800 dark:text-white shrink-0">
                 <img src={getUserAvatarUrl(host)} alt={host?.displayName || 'Host'} className="w-full h-full object-cover rounded-full" />
                 {lobbyRoom.hostUid === userProfile?.uid && activeEmote && (
                   <div className="absolute -top-6 -right-2 text-3xl animate-bounce z-10 drop-shadow-md">
@@ -1584,10 +1689,10 @@ export const Battle: React.FC = () => {
                   </div>
                 )}
               </div>
-              <div className="w-full">
+              <div className="w-full min-w-0">
                 <h3 className="font-semibold text-xs text-slate-900 dark:text-white truncate">{host?.displayName}</h3>
                 <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Rating: {host?.battleRating || 1000}</p>
-                <div className="flex items-center justify-center gap-2 mt-1">
+                <div className="flex items-center justify-center gap-1.5 mt-1.5">
                   <span className="inline-block text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-medium">
                     Ready
                   </span>
@@ -1600,29 +1705,36 @@ export const Battle: React.FC = () => {
               </div>
             </div>
 
-            {/* VS Divider */}
-            <div className="flex flex-col items-center text-center">
+            {/* Desktop Center VS + Invite Code */}
+            <div className="hidden sm:flex flex-col items-center text-center min-w-0">
               <span className="font-bold text-2xl text-slate-400">VS</span>
               <div className="mt-2 text-center">
                 <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Invite Code</span>
                 <button 
+                  type="button"
                   onClick={handleLocalCopy}
-                  className="inline-flex items-center gap-1.5 text-xs font-mono font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 mt-0.5 p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                  className="inline-flex items-center gap-1.5 text-xs font-mono font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 mt-0.5 px-2 py-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
                 >
                   <span>{lobbyRoom.roomId}</span>
-                  <FaCopy className="w-3 h-3" />
+                  {copiedInvite ? <FaCircleCheck className="w-3 h-3 text-emerald-500" /> : <FaCopy className="w-3 h-3" />}
                 </button>
+                {copiedInvite && <span className="block text-[10px] text-emerald-500 font-semibold mt-0.5">Copied!</span>}
               </div>
             </div>
 
+            {/* Mobile Centered VS Pill */}
+            <div className="sm:hidden absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xs flex items-center justify-center text-[10px] font-extrabold text-slate-500 dark:text-slate-300">
+              VS
+            </div>
+
             {/* Guest Card */}
-            <div className="flex flex-col items-center text-center space-y-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700">
-              <span className="text-[10px] font-bold tracking-wider text-purple-600 dark:text-purple-400 uppercase">
+            <div className="min-w-0 flex flex-col items-center justify-between text-center space-y-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700">
+              <span className="text-[10px] font-bold tracking-wider text-purple-600 dark:text-purple-400 uppercase truncate max-w-full">
                 {lobbyRoom.hostUid === userProfile?.uid ? 'Opponent' : 'You (Candidate)'}
               </span>
               {guest ? (
                 <>
-                  <div className="relative w-14 h-14 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-base font-bold text-slate-800 dark:text-white">
+                  <div className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-base font-bold text-slate-800 dark:text-white shrink-0">
                     <img src={getUserAvatarUrl(guest)} alt={guest.displayName || 'Guest'} className="w-full h-full object-cover rounded-full" />
                     {lobbyRoom.guestUid === userProfile?.uid && activeEmote && (
                       <div className="absolute -top-6 -right-2 text-3xl animate-bounce z-10 drop-shadow-md">
@@ -1632,10 +1744,10 @@ export const Battle: React.FC = () => {
                       </div>
                     )}
                   </div>
-                  <div className="w-full">
+                  <div className="w-full min-w-0">
                     <h3 className="font-semibold text-xs text-slate-900 dark:text-white truncate">{guest.displayName}</h3>
                     <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Rating: {guest.battleRating}</p>
-                    <div className="flex items-center justify-center gap-2 mt-1">
+                    <div className="flex items-center justify-center gap-1.5 mt-1.5">
                       <span className={`inline-block text-[10px] px-2 py-0.5 rounded-full font-medium ${
                         isOpponentReady 
                           ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800' 
@@ -1653,21 +1765,37 @@ export const Battle: React.FC = () => {
                 </>
               ) : (
                 <>
-                  <div className="w-14 h-14 rounded-full border-2 border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-sm font-semibold text-slate-400">
+                  <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full border-2 border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-sm font-semibold text-slate-400 shrink-0">
                     ?
                   </div>
-                  <div className="w-full">
-                    <h3 className="font-semibold text-xs text-slate-400 italic">Waiting...</h3>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Awaiting link click</p>
+                  <div className="w-full min-w-0">
+                    <h3 className="font-semibold text-xs text-slate-400 italic truncate">Waiting...</h3>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">Awaiting link click</p>
                   </div>
                 </>
               )}
             </div>
           </div>
 
+          {/* Mobile Compact Invite Code Bar */}
+          <div className="sm:hidden flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/70">
+            <div className="min-w-0">
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Invite Code</span>
+              <span className="text-xs font-mono font-bold text-blue-600 dark:text-blue-400 truncate block">{lobbyRoom.roomId}</span>
+            </div>
+            <button
+              type="button"
+              onClick={handleLocalCopy}
+              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer"
+            >
+              {copiedInvite ? <FaCircleCheck className="w-3.5 h-3.5 text-emerald-500" /> : <FaCopy className="w-3.5 h-3.5" />}
+              <span>{copiedInvite ? 'Copied!' : 'Copy'}</span>
+            </button>
+          </div>
+
           {/* Read-only Locked Challenge Configuration */}
           <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
-            <div className="flex items-center justify-between mb-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-1 mb-2.5">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 Challenge Configuration
               </span>
@@ -1675,34 +1803,34 @@ export const Battle: React.FC = () => {
                 Locked by Host • Synchronized
               </span>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
-              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 text-xs">
+              <div className="min-w-0 p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60">
                 <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Subject</span>
                 <span className="font-semibold text-slate-900 dark:text-white truncate block">
                   {SUBJECT_LIST.find(s => s.slug === lobbyRoom.battleType)?.shortName || lobbyRoom.subject || lobbyRoom.battleType}
                 </span>
               </div>
-              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60">
+              <div className="min-w-0 p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60">
                 <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Topic</span>
                 <span className="font-semibold text-emerald-600 dark:text-emerald-400 truncate block">
                   {lobbyRoom.settings?.topic || 'Standard'}
                 </span>
               </div>
-              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60">
+              <div className="min-w-0 p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60">
                 <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Difficulty</span>
-                <span className="font-semibold text-slate-900 dark:text-white block">
+                <span className="font-semibold text-slate-900 dark:text-white truncate block">
                   {lobbyRoom.settings?.difficulty || 'Medium'}
                 </span>
               </div>
-              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60">
+              <div className="min-w-0 p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60">
                 <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Questions</span>
-                <span className="font-semibold text-slate-900 dark:text-white block">
+                <span className="font-semibold text-slate-900 dark:text-white truncate block">
                   {lobbyRoom.settings?.questionsCount || 5} MCQs
                 </span>
               </div>
-              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60 col-span-2 sm:col-span-1">
+              <div className="min-w-0 p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60 col-span-2 sm:col-span-1">
                 <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Timer</span>
-                <span className="font-semibold text-slate-900 dark:text-white block">
+                <span className="font-semibold text-slate-900 dark:text-white truncate block">
                   {lobbyRoom.settings?.timeLimit || 30}s / Q
                 </span>
               </div>
@@ -1711,33 +1839,37 @@ export const Battle: React.FC = () => {
         </div>
 
         {/* Invite Sharing Panel */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-xl space-y-4 shadow-xs">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 sm:p-5 rounded-xl space-y-3 sm:space-y-4 shadow-xs">
           <div>
             <h2 className="font-semibold text-sm text-slate-900 dark:text-white">Share Invitation Link</h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">Send this link to anyone to immediately match in this room.</p>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <input
               type="text"
               readOnly
               value={inviteLink}
-              className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-blue-600 dark:text-blue-400 font-mono focus:outline-hidden"
+              className="w-full min-w-0 sm:flex-1 px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-blue-600 dark:text-blue-400 font-mono focus:outline-hidden truncate"
             />
-            <button
-              onClick={handleLocalCopy}
-              className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 transition-colors cursor-pointer"
-            >
-              <FaCopy className="w-3.5 h-3.5" />
-              <span>Copy</span>
-            </button>
-            <button
-              onClick={handleShareInvite}
-              className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-xs font-semibold text-white flex items-center gap-1.5 transition-colors cursor-pointer"
-            >
-              <FaWhatsapp className="w-3.5 h-3.5" />
-              <span>Share</span>
-            </button>
+            <div className="grid grid-cols-2 sm:flex gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleLocalCopy}
+                className="min-h-[44px] px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                {copiedInvite ? <FaCircleCheck className="w-3.5 h-3.5 text-emerald-500" /> : <FaCopy className="w-3.5 h-3.5" />}
+                <span>{copiedInvite ? 'Copied!' : 'Copy'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleShareInvite}
+                className="min-h-[44px] px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-xs font-semibold text-white flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <FaWhatsapp className="w-3.5 h-3.5" />
+                <span>WhatsApp</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -2012,8 +2144,37 @@ export const Battle: React.FC = () => {
     );
   }
 
-  const prefersReducedMotion = useReducedMotion();
   const currentQuestion = questions[currentIndex];
+  if (!currentQuestion || typeof currentQuestion.questionText !== 'string' || !Array.isArray(currentQuestion.options) || currentQuestion.options.length === 0) {
+    return (
+      <div className="max-w-lg mx-auto my-12 p-6 rounded-2xl bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-800/70 shadow-sm text-center space-y-4">
+        <h2 className="text-lg font-bold text-slate-900 dark:text-white">Unable to initialize battle</h2>
+        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+          Question data was incomplete or unavailable.
+        </p>
+        <div className="flex flex-col sm:flex-row gap-2.5 justify-center">
+          <button
+            type="button"
+            onClick={() => {
+              if (battleSocket.current && battleId) {
+                battleSocket.current.emit('get_battle_state', { battleId });
+              }
+            }}
+            className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold cursor-pointer"
+          >
+            Retry Initialization
+          </button>
+          <button
+            type="button"
+            onClick={handleLeaveLobby}
+            className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold cursor-pointer"
+          >
+            Return to Battle Arena
+          </button>
+        </div>
+      </div>
+    );
+  }
   const hasLongOptions = currentQuestion.options.some((opt) => opt.length > 60);
   const myProgressPct = Math.min(100, (playerCompletedQuestions / (questions.length || 1)) * 100);
   const oppProgressPct = Math.min(100, (opponentProgress.progressIndex / (questions.length || 1)) * 100);
@@ -2235,5 +2396,11 @@ export const Battle: React.FC = () => {
     </div>
   );
 };
+
+export const Battle: React.FC = () => (
+  <BattleErrorBoundary>
+    <BattleInner />
+  </BattleErrorBoundary>
+);
 
 export default Battle;

@@ -17,14 +17,14 @@ import { resolveUserAvatar } from '../utils/avatarResolver';
 import logger from '../utils/logger';
 import { SUBJECT_LIST } from '../constants/subjects';
 
-export type BattleStatus = 
-  | 'WAITING' 
-  | 'MATCHED' 
-  | 'PREPARING' 
-  | 'READY' 
-  | 'ACTIVE' 
-  | 'FINISHING' 
-  | 'COMPLETED' 
+export type BattleStatus =
+  | 'WAITING'
+  | 'MATCHED'
+  | 'PREPARING'
+  | 'READY'
+  | 'ACTIVE'
+  | 'FINISHING'
+  | 'COMPLETED'
   | 'ABORTED';
 
 export interface PlayerBattleState {
@@ -343,12 +343,12 @@ export class BattleEngine {
       playerScore: me?.score || 0,
       opponent: opp
         ? {
-            userId: opp.userId,
-            displayName: opp.displayName,
-            level: opp.level,
-            rating: opp.rating,
-            photoURL: opp.photoURL
-          }
+          userId: opp.userId,
+          displayName: opp.displayName,
+          level: opp.level,
+          rating: opp.rating,
+          photoURL: opp.photoURL
+        }
         : null
     };
   }
@@ -673,6 +673,7 @@ export class BattleEngine {
    */
   public static async createMatch(p1: any, p2: any, category: string = 'quantitative_aptitude') {
     if (!p1?.userId || !p2?.userId || p1.userId === p2.userId) {
+      logger.error('INITIALIZATION_FAILED', { reason: 'Invalid or identical player IDs', p1: p1?.userId, p2: p2?.userId });
       throw new Error('Cannot create match with invalid or identical player IDs.');
     }
 
@@ -681,14 +682,26 @@ export class BattleEngine {
     const timeLimit = 30;
     const normalizedCategory = 'quantitative_aptitude';
 
+    logger.info('MATCH_FOUND', { battleId, p1: p1.userId, p2: p2.userId, category: normalizedCategory });
+    logger.info('MATCH_VALIDATED', { battleId, p1: p1.userId, p2: p2.userId });
+
     // Claim active-battle locks atomically before emitting match_found
+    logger.info('ROOM_CREATION_STARTED', { battleId, p1: p1.userId, p2: p2.userId });
     await this.setActiveBattleLock(p1.userId, battleId);
     await this.setActiveBattleLock(p2.userId, battleId);
+    logger.info('PLAYERS_REGISTERED', { battleId, p1: p1.userId, p2: p2.userId });
 
     let questions: Question[] = [];
     try {
+      logger.info('QUESTIONS_FETCH_STARTED', { battleId, category: normalizedCategory, count: questionsCount });
       questions = await QuestionService.selectBattleQuestions(normalizedCategory, questionsCount, 'Medium');
-    } catch (qErr) {
+      logger.info('QUESTIONS_FETCHED', { battleId, count: questions.length });
+      if (!Array.isArray(questions) || questions.length !== questionsCount || questions.some(q => !q?.question || !Array.isArray(q?.options) || q.options.length < 4)) {
+        throw new Error(`Invalid or incomplete question set returned (${questions?.length || 0}/${questionsCount})`);
+      }
+      logger.info('QUESTIONS_VALIDATED', { battleId, count: questions.length });
+    } catch (qErr: any) {
+      logger.error('INITIALIZATION_FAILED', { battleId, p1: p1.userId, p2: p2.userId, error: qErr?.message || String(qErr) });
       await this.clearActiveBattleLock(p1.userId);
       await this.clearActiveBattleLock(p2.userId);
       throw qErr;
@@ -761,6 +774,7 @@ export class BattleEngine {
     };
 
     await this.saveBattle(battle);
+    logger.info('BATTLE_INITIALIZED', { battleId, p1: p1.userId, p2: p2.userId });
 
     // Persist synchronized Quick Match metadata in Firestore battleRooms
     try {
@@ -834,6 +848,8 @@ export class BattleEngine {
 
     // Setup Authoritative Server Timer
     this.startAuthoritativeTimer(battleId, battleDurationMs);
+    logger.info('BATTLE_READY', { battleId, p1: p1.userId, p2: p2.userId });
+    logger.info('BATTLE_STARTED', { battleId, p1: p1.userId, p2: p2.userId });
   }
 
   /**
@@ -919,8 +935,8 @@ export class BattleEngine {
     const originalSelectedOption = isTimeout
       ? -1
       : (mapping && Array.isArray(mapping) && typeof mapping[data.selectedOption] === 'number'
-          ? mapping[data.selectedOption]
-          : data.selectedOption);
+        ? mapping[data.selectedOption]
+        : data.selectedOption);
 
     const isCorrect = !isTimeout && originalSelectedOption === authoritativeQuestion.correctOption;
 

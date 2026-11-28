@@ -71,6 +71,7 @@ export interface GameConfig {
   levels: {
     level1Xp: number;
     levelGrowthIncrement: number;
+    progressionVersion: number;
   };
 }
 
@@ -161,7 +162,8 @@ export const GAME_CONFIG: GameConfig = {
   },
   levels: {
     level1Xp: 100,
-    levelGrowthIncrement: 50
+    levelGrowthIncrement: 50,
+    progressionVersion: 2
   }
 };
 

@@ -510,7 +510,7 @@ export const Leaderboards: React.FC = () => {
         <>
           {/* Top 3 Podium Cards */}
           {search === '' && topThree.length > 0 && (
-            <div className={`grid grid-cols-1 ${topThree.length === 1 ? 'sm:grid-cols-1 max-w-xs mx-auto' : topThree.length === 2 ? 'sm:grid-cols-2 max-w-lg mx-auto' : 'sm:grid-cols-3'} gap-3.5 pt-2`}>
+            <div className={`grid grid-cols-1 ${topThree.length === 1 ? 'sm:grid-cols-1 max-w-xs mx-auto' : topThree.length === 2 ? 'sm:grid-cols-2 max-w-lg mx-auto' : 'sm:grid-cols-3'} gap-2.5 sm:gap-3.5 pt-1 sm:pt-2`}>
               {topThree.map((user, idx) => {
                 const rankNum = idx + 1;
                 const isFirst = idx === 0;
@@ -518,12 +518,13 @@ export const Leaderboards: React.FC = () => {
                 const isCurrentUser = userProfile && user.uid === userProfile.uid;
                 const isLegendary = isCurrentUser ? checkIsLegendaryPlayer(userProfile) : user.isLegendaryPlayer;
                 const orderClass = isFirst ? 'order-1 sm:order-2' : isSecond ? 'order-2 sm:order-1' : 'order-3 sm:order-3';
+                const userLevel = calculateLevelFromXP(user.xp || user.totalXp || 0);
 
                 return (
                   <div
                     key={user.uid}
                     onClick={() => handleUserClick(user, rankNum)}
-                    className={`p-4 rounded-2xl border text-center relative flex flex-col justify-between items-center shadow-xs transition-all cursor-pointer ${orderClass} ${
+                    className={`p-3 sm:p-4 rounded-xl sm:rounded-2xl border relative flex flex-col justify-between shadow-xs transition-all cursor-pointer overflow-hidden ${orderClass} ${
                       isLegendary
                         ? 'border-yellow-400/80 bg-yellow-950/10 shadow-[0_0_15px_rgba(250,204,21,0.15)] ring-1 ring-yellow-400/50 hover:bg-yellow-900/20'
                         : isFirst 
@@ -533,42 +534,47 @@ export const Leaderboards: React.FC = () => {
                             : 'border-amber-700/30 bg-surface-dark hover:bg-surface-elevated/40'
                     }`}
                   >
-                    <div className="flex flex-col items-center w-full mb-2 space-y-1">
-                      <div className="flex items-center justify-between w-full">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md uppercase ${
+                    {/* Top Row: Rank Badge + Legendary Pill + Crown */}
+                    <div className="flex items-center justify-between gap-1.5 w-full mb-2">
+                      <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md uppercase shrink-0 ${
                           isFirst 
                             ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' 
                             : idx === 1 
                               ? 'bg-slate-400/10 text-slate-300 border border-slate-400/20'
                               : 'bg-amber-700/10 text-amber-500 border border-amber-700/20'
                         }`}>
-                          Rank #{rankNum}
+                          #{rankNum}
                         </span>
-                        {isFirst && <FaCrown className="w-4 h-4 text-amber-400" />}
+                        {isLegendary && (
+                          <span className="inline-flex items-center gap-1 bg-yellow-500/20 text-yellow-400 text-[9px] font-bold px-1.5 py-0.5 rounded border border-yellow-500/30 shrink-0">
+                            <FaCrown className="w-2.5 h-2.5" /> LEGENDARY
+                          </span>
+                        )}
                       </div>
-                      {isLegendary && (
-                        <div className="flex items-center gap-1 bg-yellow-500/20 text-yellow-400 text-[9px] font-bold px-1.5 py-0.5 rounded border border-yellow-500/30 self-start">
-                          <FaCrown className="w-2.5 h-2.5" /> LEGENDARY PLAYER
-                        </div>
-                      )}
+                      {isFirst && <FaCrown className="w-4 h-4 text-amber-400 shrink-0" />}
                     </div>
 
-                    <div className={`w-12 h-12 rounded-full overflow-hidden bg-surface-elevated flex items-center justify-center font-bold text-sm text-text-primary mb-2 ${
-                      isLegendary ? 'border-2 border-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.5)]' : 'border border-border-dark'
-                    }`}>
-                      <img src={getUserAvatarUrl(user)} alt={user.displayName || 'Cadet'} onError={handleAvatarError} className="w-full h-full object-cover" />
+                    {/* Player Identity: Horizontal compact on mobile, centered vertical on desktop */}
+                    <div className="flex flex-row sm:flex-col items-center gap-3 sm:gap-1.5 text-left sm:text-center min-w-0">
+                      <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full overflow-hidden bg-surface-elevated flex items-center justify-center font-bold text-sm text-text-primary shrink-0 ${
+                        isLegendary ? 'border-2 border-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.5)]' : 'border border-border-dark'
+                      }`}>
+                        <img src={getUserAvatarUrl(user)} alt={user.displayName || 'Cadet'} onError={handleAvatarError} className="w-full h-full object-cover" />
+                      </div>
+
+                      <div className="min-w-0 flex-1 sm:w-full">
+                        <h4 className="font-semibold text-sm text-text-primary truncate">{user.displayName || 'Cadet'}</h4>
+                        <p className="text-[11px] text-text-muted mt-0.5 truncate">Level {userLevel} Candidate</p>
+                      </div>
                     </div>
 
-                    <div className="w-full">
-                      <h4 className="font-semibold text-sm text-text-primary truncate">{user.displayName || 'Cadet'}</h4>
-                      <p className="text-[11px] text-text-muted mt-0.5">Level {calculateLevelFromXP(user.xp || user.totalXp || 0)} Candidate</p>
-                    </div>
-
-                    <div className="w-full pt-3 mt-3 border-t border-border-dark flex justify-between items-center text-xs">
-                      <span className="text-text-muted font-mono">
-                        {tab === 'weekly' ? `${user.weeklyXp || 0} XP` : `${user.xp || user.totalXp || 0} XP`}
+                    {/* Compact Footer */}
+                    <div className="w-full pt-2 mt-2.5 sm:pt-3 sm:mt-3 border-t border-border-dark flex justify-between items-center text-xs gap-2">
+                      <span className="text-text-muted font-mono truncate">
+                        {tab === 'weekly' ? `${(user.weeklyXp || 0).toLocaleString()} XP` : `${(user.xp || user.totalXp || 0).toLocaleString()} XP`}
                       </span>
-                      <span className="font-bold text-brand-400 font-mono">{user.battleRating} Elo</span>
+                      <span className="font-bold text-brand-400 font-mono shrink-0">{user.battleRating} Elo</span>
                     </div>
                   </div>
                 );

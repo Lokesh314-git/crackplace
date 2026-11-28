@@ -26,13 +26,15 @@ service cloud.firestore {
         (!('role' in request.resource.data) || request.resource.data.role == 'student') &&
         (!('coins' in request.resource.data) || request.resource.data.coins <= 100) &&
         (!('xp' in request.resource.data) || request.resource.data.xp == 0) &&
-        (!('level' in request.resource.data) || request.resource.data.level == 1);
+        (!('totalXp' in request.resource.data) || request.resource.data.totalXp == 0) &&
+        (!('level' in request.resource.data) || request.resource.data.level == 1) &&
+        (!('battleRating' in request.resource.data) || request.resource.data.battleRating == 1000);
       
       // Allow update by owner or admin
-      // Critical security rule: Non-admins CANNOT change role, coins, xp, level, or battleRating!
+      // Critical security rule: Non-admins CANNOT change role, coins, xp, totalXp, level, battleRating, or xpProgressionVersion!
       allow update: if isAdmin() || (
         isOwner(userId) &&
-        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'coins', 'xp', 'totalXp', 'level', 'battleRating']))
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'coins', 'xp', 'totalXp', 'level', 'battleRating', 'xpProgressionVersion']))
       );
       allow delete: if isAdmin();
     }
